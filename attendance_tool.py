@@ -2,6 +2,8 @@
 考勤管理工具 - intretech UMS 系统
 https://ums.intretech.com/ums/AtteUserReportManage.aspx
 
+v73 - 新增下班弹窗提醒功能（托盘气泡）；设置弹窗新增"下班提醒提前量"配置
+
 v72 - 应下班时间计算修复；加班时间显示格式改为时.分；周加/假加统一逐行累加
 
 v3.0 - 使用 Playwright (Edge) 实现登录和数据抓取，确保 JS 渲染数据完整获取。
@@ -15,7 +17,7 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v72"
+APP_VERSION = "v73"
 import json
 import asyncio
 import threading
@@ -1227,6 +1229,7 @@ class ConfigWindow(QWidget):
             "rest_end": "13:00",
             "flex_enabled": False,
             "remind_enabled": True,
+            "remind_offset": 0,   # 下班提醒提前量（分钟），0=正点提醒
             "late_threshold": 0,
         }
         if os.path.exists(cfg_path):
@@ -1265,6 +1268,34 @@ class ConfigWindow(QWidget):
         layout.addLayout(self._create_time_row("晚休开始", "dinner_start", ""))
         # 晚休结束
         layout.addLayout(self._create_time_row("晚休结束", "dinner_end", ""))
+
+        # 下班提醒开关 + 提前量
+        row_remind = QHBoxLayout()
+        cb_remind = QCheckBox("下班提醒")
+        cb_remind.setStyleSheet(f"font-size: 14px; color: {THEME['text']};")
+        cb_remind.setChecked(self._config.get("remind_enabled", True))
+        cb_remind.stateChanged.connect(lambda s: self._config.__setitem__("remind_enabled", bool(s)))
+        row_remind.addWidget(cb_remind)
+
+        offset_min = self._config.get("remind_offset", 0)
+        combo_oh = QComboBox()
+        combo_oh.addItems([str(i) for i in range(3)])   # 0~2小时
+        combo_oh.setFixedWidth(48)
+        combo_oh.setCurrentIndex(offset_min // 60)
+        combo_oh.currentIndexChanged.connect(lambda i: self._config.__setitem__("remind_offset", i * 60 + int(combo_om.currentText())))
+        row_remind.addWidget(QLabel("提前"))
+        row_remind.addWidget(combo_oh)
+        row_remind.addWidget(QLabel("时"))
+
+        combo_om = QComboBox()
+        combo_om.addItems(["0", "15", "30", "45"])
+        combo_om.setFixedWidth(48)
+        combo_om.setCurrentIndex(offset_min % 60 // 15)
+        combo_om.currentIndexChanged.connect(lambda i: self._config.__setitem__("remind_offset", int(combo_oh.currentText()) * 60 + i * 15))
+        row_remind.addWidget(combo_om)
+        row_remind.addWidget(QLabel("分"))
+        row_remind.addStretch()
+        layout.addLayout(row_remind)
 
         layout.addStretch()
 
@@ -1330,6 +1361,10 @@ class MainWindow(QMainWindow):
         # 刷新倒计时（秒）
         self._refresh_interval = 0   # 0 = 未启用
         self._refresh_remain   = 0
+
+        # 下班提醒：每天只弹一次，跨天重置
+        self._reminded_today = False
+        self._remind_date    = None   # 记录当天日期，用于判断是否跨天
 
         self.setWindowTitle(f"考勤管理  ·  {username}")
         self.resize(780, 420)
@@ -1804,8 +1839,54 @@ class MainWindow(QMainWindow):
         self.lbl_count.setVisible(False)
         return None  # 不再返回任何 widget
 
+    # ── 下班提醒辅助方法 ──
+
+    def _find_first_clock_in(self, row):
+        """
+        从一行数据中找到第一次上班打卡时间（分钟数）。
+        打卡格式: "[08:48]，[17:19]，[17:48]，[20:06]"
+        返回 None 表示无打卡。
+        """
+        headers = self._headers
+        clock_col = -1
+        for i, h in enumerate(headers):
+            if any(k in h for k in ["打卡", "时间", "考勤时间"]):
+                clock_col = i
+                break
+        if clock_col < 0 or clock_col >= len(row):
+            return None
+        clock_str = str(row[clock_col]).strip()
+        if not clock_str or clock_str in ("--", ""):
+            return None
+        # 解析: 去掉方括号和中文逗号
+        cleaned = clock_str.replace("，", ",").replace("[", "").replace("]", "")
+        parts = cleaned.split(",")
+        for t in parts:
+            t = t.strip()
+            if t and ":" in t:
+                return self._parse_time_to_min(t)
+        return None
+
+    def _get_ot_str_from_row(self, row):
+        """从一行数据中获取加班时长字符串（合计加班列）"""
+        headers = self._headers
+        for i, h in enumerate(headers):
+            if any(k in h for k in ["合计加班", "合计"]):
+                if i < len(row):
+                    val = str(row[i]).strip()
+                    if val and val not in ("--", "0"):
+                        return val
+                break
+        return "0时0分"
+
     def _on_tick(self):
-        """每秒定时回调：倒计时刷新"""
+        """每秒定时回调：倒计时刷新 + 下班提醒"""
+        # ── 跨天重置提醒标志 ──
+        today = datetime.date.today()
+        if self._remind_date != today:
+            self._reminded_today = False
+            self._remind_date    = today
+
         if self._refresh_interval > 0:
             self._refresh_remain -= 1
             if self._refresh_remain <= 0:
@@ -1816,6 +1897,91 @@ class MainWindow(QMainWindow):
             self._lbl_countdown.setText(f"{m:02d}:{s:02d}")
         else:
             self._lbl_countdown.setText("--")
+
+        # ── 下班弹窗提醒（仅今日、仅一次）──
+        self._check_remind()
+
+    def _check_remind(self):
+        """检查是否需要弹出下班提醒"""
+        if self._reminded_today:
+            return  # 今天已提醒过，跳过
+
+        if not self._has_data:
+            return  # 数据未加载，无法计算应下班时间
+
+        # 只在今日提醒
+        today = datetime.date.today()
+        target_date = today
+        if not self._all_data:
+            return
+
+        # 找到今日的打卡记录
+        today_str = today.strftime("%Y-%m-%d")
+        row = None
+        for r in self._all_data:
+            if len(r) > 0 and today_str in str(r[0]):
+                row = r
+                break
+        if not row:
+            return  # 今日无打卡数据
+
+        # 读取配置
+        config = self._load_work_config()
+        if not config.get("remind_enabled", True):
+            return  # 提醒未启用
+
+        # 提醒提前量（分钟），默认0
+        remind_offset = config.get("remind_offset", 0)
+
+        # 计算应下班时间（复刻 _update_stats 中的逻辑）
+        first_clock_in = self._find_first_clock_in(row)
+        if first_clock_in is None:
+            return
+
+        standed_up      = self._parse_time_to_min(config.get("work_start",      "07:00"))
+        standed_up_late = self._parse_time_to_min(config.get("work_start_late", "09:00"))
+        rest1_begin     = self._parse_time_to_min(config.get("rest_start",      "12:00"))
+        rest1_end       = self._parse_time_to_min(config.get("rest_end",        "13:00"))
+        rest2_begin     = self._parse_time_to_min(config.get("dinner_start",    "17:00"))
+        rest2_end       = self._parse_time_to_min(config.get("dinner_end",      "17:45"))
+
+        # 有效上班时间
+        eff_start = standed_up if first_clock_in < standed_up else first_clock_in
+        base = eff_start + 8 * 60 + (rest1_end - rest1_begin)
+
+        # 加班设置（从加班时长字段读，默认为0）
+        ot_str = self._get_ot_str_from_row(row)
+        ot_parts = ot_str.replace("时", ":").replace("分", "").split(":")
+        ot_h = int(ot_parts[0]) if len(ot_parts) > 0 and ot_parts[0].isdigit() else 0
+        ot_m = int(ot_parts[1]) if len(ot_parts) > 1 and ot_parts[1].isdigit() else 0
+        ot_total = ot_h * 60 + ot_m
+
+        work_done_time = base + ot_total
+        if work_done_time < rest2_begin:
+            should_out_min = work_done_time
+        else:
+            should_out_min = work_done_time + (rest2_end - rest2_begin)
+
+        # 提醒触发时间
+        remind_trigger = should_out_min + remind_offset
+
+        # 当前时间（分钟）
+        now = datetime.datetime.now()
+        now_min = now.hour * 60 + now.minute
+
+        if now_min >= remind_trigger:
+            self._reminded_today = True
+            # 弹窗提醒
+            should_out_str = self._min_to_time_str(should_out_min)
+            msg = f"现在是 {now.strftime('%H:%M')}\n应下班时间：{should_out_str}"
+            if remind_offset > 0:
+                msg += f"\n（提前 {remind_offset} 分钟提醒）"
+            self.tray_icon.showMessage(
+                "下班提醒 🎉",
+                msg,
+                QSystemTrayIcon.Information,
+                8000
+            )
 
 
     # ─── 逻辑 ───
@@ -2689,7 +2855,7 @@ class MainWindow(QMainWindow):
             "dinner_end":      "17:45",   # 晚饭结束
             "flex_enabled":    False,
             "remind_enabled":  True,
-            "remind_time":     "18:00",
+            "remind_offset":   0,         # 下班提醒提前量（分钟），0=正点提醒
             "week_mode":       "standard",
             "late_threshold":  0,
         }
