@@ -17,7 +17,7 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v74"
+APP_VERSION = "v75"
 import json
 import asyncio
 import threading
@@ -1206,7 +1206,7 @@ class ConfigWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("上下班时间配置")
-        self.setFixedSize(380, 320)
+        self.setFixedSize(380, 370)
         self.setStyleSheet(f"""
             QWidget {{
                 background-color: {THEME['bg']};
@@ -1269,7 +1269,7 @@ class ConfigWindow(QWidget):
         # 晚休结束
         layout.addLayout(self._create_time_row("晚休结束", "dinner_end", ""))
 
-        # 下班提醒开关 + 提前量
+        # 下班提醒开关 + 提前量（仅分钟）
         row_remind = QHBoxLayout()
         cb_remind = QCheckBox("下班提醒")
         cb_remind.setStyleSheet(f"font-size: 14px; color: {THEME['text']};")
@@ -1278,20 +1278,27 @@ class ConfigWindow(QWidget):
         row_remind.addWidget(cb_remind)
 
         offset_min = self._config.get("remind_offset", 0)
-        combo_oh = QComboBox()
-        combo_oh.addItems([str(i) for i in range(3)])   # 0~2小时
-        combo_oh.setFixedWidth(48)
-        combo_oh.setCurrentIndex(offset_min // 60)
-        combo_oh.currentIndexChanged.connect(lambda i: self._config.__setitem__("remind_offset", i * 60 + int(combo_om.currentText())))
-        row_remind.addWidget(QLabel("提前"))
-        row_remind.addWidget(combo_oh)
-        row_remind.addWidget(QLabel("时"))
-
         combo_om = QComboBox()
         combo_om.addItems(["0", "15", "30", "45"])
-        combo_om.setFixedWidth(48)
-        combo_om.setCurrentIndex(offset_min % 60 // 15)
-        combo_om.currentIndexChanged.connect(lambda i: self._config.__setitem__("remind_offset", int(combo_oh.currentText()) * 60 + i * 15))
+        combo_om.setFixedSize(56, 28)
+        # 下拉列表样式：选中蓝底黑字，悬停浅蓝底黑字
+        combo_om.setStyleSheet("""
+            QComboBox { font-size: 13px; }
+            QComboBox QAbstractItemView {
+                background: white;
+                selection-background-color: #1976D2;
+                selection-color: black;
+            }
+            QComboBox QAbstractItemView::item:hover {
+                background-color: #42A5F5;
+                color: black;
+            }
+        """)
+        # 默认值直接用15分钟档（索引=1）
+        default_idx = 1 if offset_min == 15 else (2 if offset_min == 30 else (3 if offset_min == 45 else 0))
+        combo_om.setCurrentIndex(default_idx)
+        combo_om.currentIndexChanged.connect(lambda i: self._config.__setitem__("remind_offset", i * 15))
+        row_remind.addWidget(QLabel("提前"))
         row_remind.addWidget(combo_om)
         row_remind.addWidget(QLabel("分"))
         row_remind.addStretch()
