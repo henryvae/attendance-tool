@@ -17,7 +17,7 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v73"
+APP_VERSION = "v74"
 import json
 import asyncio
 import threading
@@ -1510,22 +1510,6 @@ class MainWindow(QMainWindow):
         row_date.addWidget(self.combo_date)
         row_date.addStretch()
         vb.addLayout(row_date)
-
-        # ── 下班提醒
-        row_remind = QHBoxLayout()
-        row_remind.addWidget(QLabel("下班提醒："))
-        self.combo_remind_h = QComboBox()
-        self.combo_remind_h.addItems([str(i) for i in range(24)])
-        self.combo_remind_h.setFixedWidth(48)
-        row_remind.addWidget(self.combo_remind_h)
-        row_remind.addWidget(QLabel("时"))
-        self.combo_remind_m = QComboBox()
-        self.combo_remind_m.addItems(["0", "15", "30", "45"])
-        self.combo_remind_m.setFixedWidth(48)
-        row_remind.addWidget(self.combo_remind_m)
-        row_remind.addWidget(QLabel("分"))
-        row_remind.addStretch()
-        vb.addLayout(row_remind)
 
         # ── 加班设置
         row_ot = QHBoxLayout()
