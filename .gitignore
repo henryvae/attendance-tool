@@ -5,6 +5,7 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+build_check/
 *.egg
 
 # IDE
@@ -13,10 +14,29 @@ build/
 *.swp
 *.swo
 
-# Logs
+# Logs & debug files
 *.log
 debug*.log
+build_log*.txt
+build_test.txt
+build_v*.txt
+debug_out.txt
+
+# Debug / probe scripts
+debug_*.py
+probe_*.py
+test_logic.py
+run_build.py
+
+# Screenshots & images (not needed in repo)
+*.png
 
 # OS
 .DS_Store
 Thumbs.db
+
+# WorkBuddy internal
+.workbuddy/
+
+# History versions
+history_versions/

@@ -2,6 +2,8 @@
 考勤管理工具 - intretech UMS 系统
 https://ums.intretech.com/ums/AtteUserReportManage.aspx
 
+v72 - 应下班时间计算修复；加班时间显示格式改为时.分；周加/假加统一逐行累加
+
 v3.0 - 使用 Playwright (Edge) 实现登录和数据抓取，确保 JS 渲染数据完整获取。
 字段名已通过真实抓包确认:
 - 登录: txtUserName / txtPWD / Button1
@@ -12,6 +14,8 @@ import sys
 import os
 import csv
 import datetime
+
+APP_VERSION = "v72"
 import json
 import asyncio
 import threading
@@ -1657,6 +1661,16 @@ class MainWindow(QMainWindow):
         lbl_title = QLabel(f"考勤管理  ·  {self.username}")
         lbl_title.setStyleSheet("font-size:13px;font-weight:bold;color:#2d5a1e;")
         tb_layout.addWidget(lbl_title)
+        # 版本号标签
+        lbl_ver = QLabel(APP_VERSION)
+        lbl_ver.setStyleSheet("""
+            font-size:11px; color:#2d5a1e;
+            background: rgba(255,255,255,0.55);
+            border: 1px solid #7ab07a;
+            border-radius: 6px;
+            padding: 1px 7px;
+        """)
+        tb_layout.addWidget(lbl_ver)
         tb_layout.addStretch()
 
         # 进度条（查询时显示）
