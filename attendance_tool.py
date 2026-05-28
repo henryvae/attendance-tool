@@ -2,6 +2,10 @@
 考勤管理工具 - intretech UMS 系统
 https://ums.intretech.com/ums/AtteUserReportManage.aspx
 
+v91 - 将下班提醒区域的🔔 emoji 图标替换为自定义图片图标（base64内嵌，无需额外资源文件）
+
+v90 - 修复下班提醒弹窗：已到下班时间时显示"已到下班时间"（蓝色标题），未到时显示"还有X分钟"；_check_remind 下班后1小时内均可触发
+
 v73 - 新增下班弹窗提醒功能（托盘气泡）；设置弹窗新增"下班提醒提前量"配置
 
 v72 - 应下班时间计算修复；加班时间显示格式改为时.分；周加/假加统一逐行累加
@@ -17,7 +21,7 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v75"
+APP_VERSION = "v91"
 import json
 import asyncio
 import threading
@@ -29,9 +33,9 @@ from PyQt5.QtWidgets import (
     QHeaderView, QComboBox, QProgressBar,
     QAbstractItemView, QFileDialog, QCheckBox,
     QSystemTrayIcon, QMenu, QAction, QTimeEdit,
-    QStyle,
+    QStyle, QDialog, QSpinBox,
 )
-from PyQt5.QtCore import Qt, QDate, QThread, pyqtSignal, QTimer, QTime
+from PyQt5.QtCore import Qt, QDate, QThread, pyqtSignal, QTimer, QTime, QSize
 from PyQt5.QtNetwork import QLocalServer, QLocalSocket
 from PyQt5.QtGui import QFont, QColor, QIcon
 
@@ -1228,8 +1232,6 @@ class ConfigWindow(QWidget):
             "rest_start": "12:00",
             "rest_end": "13:00",
             "flex_enabled": False,
-            "remind_enabled": True,
-            "remind_offset": 0,   # 下班提醒提前量（分钟），0=正点提醒
             "late_threshold": 0,
         }
         if os.path.exists(cfg_path):
@@ -1268,41 +1270,6 @@ class ConfigWindow(QWidget):
         layout.addLayout(self._create_time_row("晚休开始", "dinner_start", ""))
         # 晚休结束
         layout.addLayout(self._create_time_row("晚休结束", "dinner_end", ""))
-
-        # 下班提醒开关 + 提前量（仅分钟）
-        row_remind = QHBoxLayout()
-        cb_remind = QCheckBox("下班提醒")
-        cb_remind.setStyleSheet(f"font-size: 14px; color: {THEME['text']};")
-        cb_remind.setChecked(self._config.get("remind_enabled", True))
-        cb_remind.stateChanged.connect(lambda s: self._config.__setitem__("remind_enabled", bool(s)))
-        row_remind.addWidget(cb_remind)
-
-        offset_min = self._config.get("remind_offset", 0)
-        combo_om = QComboBox()
-        combo_om.addItems(["0", "15", "30", "45"])
-        combo_om.setFixedSize(56, 28)
-        # 下拉列表样式：选中蓝底黑字，悬停浅蓝底黑字
-        combo_om.setStyleSheet("""
-            QComboBox { font-size: 13px; }
-            QComboBox QAbstractItemView {
-                background: white;
-                selection-background-color: #1976D2;
-                selection-color: black;
-            }
-            QComboBox QAbstractItemView::item:hover {
-                background-color: #42A5F5;
-                color: black;
-            }
-        """)
-        # 默认值直接用15分钟档（索引=1）
-        default_idx = 1 if offset_min == 15 else (2 if offset_min == 30 else (3 if offset_min == 45 else 0))
-        combo_om.setCurrentIndex(default_idx)
-        combo_om.currentIndexChanged.connect(lambda i: self._config.__setitem__("remind_offset", i * 15))
-        row_remind.addWidget(QLabel("提前"))
-        row_remind.addWidget(combo_om)
-        row_remind.addWidget(QLabel("分"))
-        row_remind.addStretch()
-        layout.addLayout(row_remind)
 
         layout.addStretch()
 
@@ -1350,6 +1317,98 @@ class ConfigWindow(QWidget):
 
 
 # ─────────────────────────────────────────────
+#  下班提醒弹窗
+# ─────────────────────────────────────────────
+class OffWorkRemindDialog(QDialog):
+    """下班提醒弹窗：360×240，居中，30秒自动关闭"""
+
+    def __init__(self, remain_txt: str, should_out_str: str, is_arrived: bool = False, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("下班提醒")
+        self.setFixedSize(360, 240)
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self._auto_close_remain = 30  # 自动关闭倒计时（秒）
+
+        # 屏幕居中
+        screen = QApplication.primaryScreen().geometry()
+        self.move(
+            (screen.width() - self.width()) // 2,
+            (screen.height() - self.height()) // 2,
+        )
+
+        vb = QVBoxLayout(self)
+        vb.setContentsMargins(24, 20, 24, 20)
+        vb.setSpacing(12)
+        vb.setAlignment(Qt.AlignCenter)
+
+        # 图标
+        lbl_icon = QLabel("🏠")
+        lbl_icon.setAlignment(Qt.AlignCenter)
+        lbl_icon.setStyleSheet("font-size: 32px;")
+        vb.addWidget(lbl_icon)
+
+        # 标题：区分"已到下班时间"和"下班提醒"
+        if is_arrived:
+            lbl_title = QLabel("已到下班时间")
+            lbl_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #1976D2;")
+        else:
+            lbl_title = QLabel("下班提醒")
+            lbl_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #333;")
+        lbl_title.setAlignment(Qt.AlignCenter)
+        vb.addWidget(lbl_title)
+
+        # 还有多久（已到时不显示）
+        if not is_arrived:
+            lbl_remain = QLabel(f"还有 {remain_txt} 就要下班啦！")
+            lbl_remain.setAlignment(Qt.AlignCenter)
+            lbl_remain.setStyleSheet("font-size: 13px; color: #666;")
+            vb.addWidget(lbl_remain)
+
+        # 应下班时间
+        lbl_out = QLabel(f"预计下班 {should_out_str}")
+        lbl_out.setAlignment(Qt.AlignCenter)
+        lbl_out.setStyleSheet("font-size: 12px; color: #999;")
+        vb.addWidget(lbl_out)
+
+        # 自动关闭倒计时
+        self._lbl_auto = QLabel(f"{self._auto_close_remain} 秒后自动关闭")
+        self._lbl_auto.setAlignment(Qt.AlignCenter)
+        self._lbl_auto.setStyleSheet("font-size: 11px; color: #aaa;")
+        vb.addWidget(self._lbl_auto)
+
+        # 知道了按钮
+        btn_ok = QPushButton("知道了")
+        btn_ok.setFixedHeight(36)
+        btn_ok.setStyleSheet("""
+            QPushButton {
+                background: #6B5BFF;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #5A4AE0;
+            }
+        """)
+        btn_ok.clicked.connect(self.close)
+        vb.addWidget(btn_ok)
+
+        # 自动关闭定时器
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._on_tick)
+        self._timer.start(1000)
+
+    def _on_tick(self):
+        self._auto_close_remain -= 1
+        if self._auto_close_remain <= 0:
+            self.close()
+        else:
+            self._lbl_auto.setText(f"{self._auto_close_remain} 秒后自动关闭")
+
+
+# ─────────────────────────────────────────────
 #  主界面
 # ─────────────────────────────────────────────
 class MainWindow(QMainWindow):
@@ -1369,9 +1428,15 @@ class MainWindow(QMainWindow):
         self._refresh_interval = 0   # 0 = 未启用
         self._refresh_remain   = 0
 
+        # 获取失败后自动重试倒计时
+        self._retry_remain = 0       # >0 时每秒 -1，归零自动重试
+
         # 下班提醒：每天只弹一次，跨天重置
         self._reminded_today = False
         self._remind_date    = None   # 记录当天日期，用于判断是否跨天
+        self._remind_check_interval = 30  # 每 30 秒检查一次下班提醒
+        self._remind_check_remain   = 0
+        self._today_should_out_min = None  # 今日应下班时间（分钟），_update_stats 计算后写入
 
         self.setWindowTitle(f"考勤管理  ·  {username}")
         self.resize(780, 420)
@@ -1538,6 +1603,65 @@ class MainWindow(QMainWindow):
         self.combo_ot_h.currentIndexChanged.connect(self._refresh_detail_panel)
         self.combo_ot_m.currentIndexChanged.connect(self._refresh_detail_panel)
 
+        # ── 下班提醒设置
+        row_remind = QHBoxLayout()
+        # 自定义提醒图标（base64内嵌，打包时无需额外文件）
+        _remind_icon_b64 = (
+            "iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAIAAABvFaqvAAAB60lEQVR4nNWUv2tUQRDHv7P73l1SRAXPmBRiTCMKokEELSyiKIKVaCmSaKNWVlZqIdFCEEHE7vwLUoggapEgsYggCCInkkJBDxRNcv4Ix93+mJF9F4u729NE0+TbvWHfZ2e+MzskIlgJqRWhYBWCRMAC+R8QZwgiKAIBnv8JxBL+V4T5BS7PeedZ/82DpBPlddleGndPSqgbDBRw9iBdPJIPGWYJtota5qhRTqns9l8z377S7p3oX0tTM/LjI04fQ3Gki4VUlCTN8iwifPhmFSeqdydrIuH7U8XtvRoiEyUjIs5Lu1R7UbM/ZfINhnbg3HCOheoOfev02PGEGA9eBc+jTYx4WLNwFoUeAsj6EHGMDT1KNL7XOprdBCIKt21cQ1v6MV2Smc82nyCfIFFSfGZhcWhrOB99nc0ggBlpQpePqoV5HLjh7kyY+y/taLF++zGogKcVAxGtItW1du23U3L9obkyzr6ShVKgT5LN7FIZ2aPv7esOvW2egwiokTwR3n1xU2+5UsWuTfS+i8+8sLlUmRpf2K5vDXV7gaY/DmTDLM8Y7E0Gexcjw0BO06lpA4Pnc6F3LcMUBwHQavG5IctOCCcHcuvz9OiDO78tjdy99A3J2ZR10jJAAHy2UhQixOWB0FmrbtUuXb8ARkIBc798WpwAAAAASUVORK5CYII="
+        )
+        import base64 as _b64mod
+        from PyQt5.QtGui import QPixmap as _QPixmap, QIcon as _QIcon
+        _remind_raw = _b64mod.b64decode(_remind_icon_b64)
+        _remind_pix = _QPixmap()
+        _remind_pix.loadFromData(_remind_raw)
+        lbl_bell = QLabel("🔔")
+        lbl_bell.setStyleSheet("font-size: 14px;")
+        row_remind.addWidget(lbl_bell)
+        row_remind.addWidget(QLabel("提醒"))
+        self.spin_remind = QSpinBox()
+        self.spin_remind.setRange(0, 60)
+        self.spin_remind.setValue(5)
+        self.spin_remind.setSingleStep(5)
+        self.spin_remind.setFixedWidth(50)
+        self.spin_remind.setStyleSheet("QSpinBox { font-size: 12px; }")
+        row_remind.addWidget(self.spin_remind)
+        row_remind.addWidget(QLabel("分钟"))
+        self.cb_remind = QCheckBox("")
+        self.cb_remind.setChecked(True)
+        self.cb_remind.setStyleSheet("QCheckBox { spacing: 4px; }")
+        row_remind.addWidget(self.cb_remind)
+        self.btn_test_remind = QPushButton()
+        self.btn_test_remind.setIcon(_QIcon(_remind_pix))
+        self.btn_test_remind.setIconSize(QSize(18, 18))
+        self.btn_test_remind.setFixedSize(28, 24)
+        self.btn_test_remind.setStyleSheet("QPushButton { padding: 0px; }")
+        self.btn_test_remind.setToolTip("手动触发下班提醒")
+        self.btn_test_remind.clicked.connect(self._manual_show_remind)
+        row_remind.addWidget(self.btn_test_remind)
+        row_remind.addStretch()
+        vb.addLayout(row_remind)
+
+        # 从配置加载提醒设置（如存在）
+        cfg = self._load_work_config()
+        self.cb_remind.setChecked(cfg.get("remind_enabled", True))
+        self.spin_remind.setValue(cfg.get("remind_offset", 5))
+        # 变化时保存到配置
+        def _save_remind_cfg():
+            cfg_path = os.path.join(os.path.expanduser("~"), ".attendance_tool_cfg.json")
+            try:
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception:
+                data = {}
+            if "work_config" not in data:
+                data["work_config"] = {}
+            data["work_config"]["remind_enabled"] = self.cb_remind.isChecked()
+            data["work_config"]["remind_offset"] = self.spin_remind.value()
+            with open(cfg_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        self.cb_remind.stateChanged.connect(_save_remind_cfg)
+        self.spin_remind.valueChanged.connect(_save_remind_cfg)
+
         # ── 分隔线
         sep = QFrame()
         sep.setFrameShape(QFrame.HLine)
@@ -1586,6 +1710,21 @@ class MainWindow(QMainWindow):
         btn_lo.clicked.connect(self._logout)
         row_btns.addWidget(btn_lo)
         vb.addLayout(row_btns)
+
+        # ── 失败重试提示标签（无网络时显示）
+        self._lbl_retry = QLabel("")
+        self._lbl_retry.setAlignment(Qt.AlignCenter)
+        self._lbl_retry.setWordWrap(True)
+        self._lbl_retry.setStyleSheet("""
+            QLabel {
+                color: #c0392b;
+                font-size: 11px;
+                padding: 4px;
+                background: transparent;
+            }
+        """)
+        self._lbl_retry.setVisible(False)
+        vb.addWidget(self._lbl_retry)
 
         vb.addStretch()
         return frame
@@ -1875,8 +2014,9 @@ class MainWindow(QMainWindow):
         # ── 跨天重置提醒标志 ──
         today = datetime.date.today()
         if self._remind_date != today:
-            self._reminded_today = False
-            self._remind_date    = today
+            self._reminded_today       = False
+            self._today_should_out_min = None  # 跨天清空缓存的应下班时间
+            self._remind_date          = today
 
         if self._refresh_interval > 0:
             self._refresh_remain -= 1
@@ -1889,58 +2029,68 @@ class MainWindow(QMainWindow):
         else:
             self._lbl_countdown.setText("--")
 
-        # ── 下班弹窗提醒（仅今日、仅一次）──
-        self._check_remind()
+        # ── 失败重试倒计时 ──
+        if self._retry_remain > 0:
+            self._retry_remain -= 1
+            if self._retry_remain <= 0:
+                self._lbl_retry.setVisible(False)
+                self._fetch_data()
+            else:
+                self._lbl_retry.setText(f"⚠ 数据获取失败\n{self._retry_remain} 秒后自动重试...")
 
-    def _check_remind(self):
-        """检查是否需要弹出下班提醒"""
-        if self._reminded_today:
-            return  # 今天已提醒过，跳过
+        # ── 下班提醒检查（每 30 秒一次）──
+        self._remind_check_remain -= 1
+        if self._remind_check_remain <= 0:
+            self._remind_check_remain = self._remind_check_interval
+            self._check_remind()
 
-        if not self._has_data:
-            return  # 数据未加载，无法计算应下班时间
+    def _calc_today_should_out_min(self):
+        """计算今日应下班时间（分钟），无数据则返回 None"""
+        # 优先复用主界面已计算好的应下班时间（与右侧详情面板一致）
+        if self._today_should_out_min is not None:
+            return self._today_should_out_min
 
-        # 只在今日提醒
+        if not self._has_data or not self._all_data:
+            return None
+
         today = datetime.date.today()
-        target_date = today
-        if not self._all_data:
-            return
-
-        # 找到今日的打卡记录
-        today_str = today.strftime("%Y-%m-%d")
         row = None
+        date_fmts = ["%Y/%m/%d", "%Y-%m-%d", "%Y%m%d", "%Y.%m.%d"]
         for r in self._all_data:
-            if len(r) > 0 and today_str in str(r[0]):
+            if len(r) == 0:
+                continue
+            date_str = str(r[0]).strip()
+            dt = None
+            for fmt in date_fmts:
+                try:
+                    dt = datetime.datetime.strptime(date_str, fmt).date()
+                    break
+                except Exception:
+                    continue
+            match = (dt == today) if dt else False
+            if not match and dt:
+                match = (dt.month == today.month and dt.day == today.day
+                         and abs(dt.year - today.year) <= 1)
+            if match:
                 row = r
                 break
         if not row:
-            return  # 今日无打卡数据
+            return None
 
-        # 读取配置
         config = self._load_work_config()
-        if not config.get("remind_enabled", True):
-            return  # 提醒未启用
-
-        # 提醒提前量（分钟），默认0
-        remind_offset = config.get("remind_offset", 0)
-
-        # 计算应下班时间（复刻 _update_stats 中的逻辑）
         first_clock_in = self._find_first_clock_in(row)
         if first_clock_in is None:
-            return
+            return None
 
-        standed_up      = self._parse_time_to_min(config.get("work_start",      "07:00"))
-        standed_up_late = self._parse_time_to_min(config.get("work_start_late", "09:00"))
-        rest1_begin     = self._parse_time_to_min(config.get("rest_start",      "12:00"))
-        rest1_end       = self._parse_time_to_min(config.get("rest_end",        "13:00"))
-        rest2_begin     = self._parse_time_to_min(config.get("dinner_start",    "17:00"))
-        rest2_end       = self._parse_time_to_min(config.get("dinner_end",      "17:45"))
+        standed_up  = self._parse_time_to_min(config.get("work_start", "07:00"))
+        rest1_begin = self._parse_time_to_min(config.get("rest_start", "12:00"))
+        rest1_end   = self._parse_time_to_min(config.get("rest_end",   "13:00"))
+        rest2_begin = self._parse_time_to_min(config.get("dinner_start","17:00"))
+        rest2_end   = self._parse_time_to_min(config.get("dinner_end", "17:45"))
 
-        # 有效上班时间
         eff_start = standed_up if first_clock_in < standed_up else first_clock_in
         base = eff_start + 8 * 60 + (rest1_end - rest1_begin)
 
-        # 加班设置（从加班时长字段读，默认为0）
         ot_str = self._get_ot_str_from_row(row)
         ot_parts = ot_str.replace("时", ":").replace("分", "").split(":")
         ot_h = int(ot_parts[0]) if len(ot_parts) > 0 and ot_parts[0].isdigit() else 0
@@ -1949,31 +2099,75 @@ class MainWindow(QMainWindow):
 
         work_done_time = base + ot_total
         if work_done_time < rest2_begin:
-            should_out_min = work_done_time
+            return work_done_time
         else:
-            should_out_min = work_done_time + (rest2_end - rest2_begin)
+            return work_done_time + (rest2_end - rest2_begin)
 
-        # 提醒触发时间
-        remind_trigger = should_out_min + remind_offset
+    def _show_remind_dialog(self, should_out_min):
+        """显示下班提醒弹窗（should_out_min: 应下班分钟数）"""
+        now = datetime.datetime.now()
+        now_min = now.hour * 60 + now.minute
+        remain_min = should_out_min - now_min
+        should_out_str = self._min_to_time_str(should_out_min)
 
-        # 当前时间（分钟）
+        if remain_min <= 0:
+            # 已到或已过应下班时间
+            dlg = OffWorkRemindDialog(None, should_out_str, is_arrived=True, parent=self)
+        else:
+            remain_h = remain_min // 60
+            remain_m = remain_min % 60
+            if remain_h > 0:
+                remain_txt = f"{remain_h}小时{remain_m}分钟"
+            else:
+                remain_txt = f"{remain_m}分钟"
+            dlg = OffWorkRemindDialog(remain_txt, should_out_str, is_arrived=False, parent=self)
+        dlg.show()  # 非模态，最小化时也能显示
+
+    def _check_remind(self):
+        """检查是否需要弹出下班提醒（定时调用）"""
+        if self._reminded_today:
+            return  # 今天已提醒过，跳过
+
+        if hasattr(self, "cb_remind") and not self.cb_remind.isChecked():
+            return  # 提醒未启用
+
+        should_out_min = self._calc_today_should_out_min()
+        if should_out_min is None:
+            return
+
         now = datetime.datetime.now()
         now_min = now.hour * 60 + now.minute
 
-        if now_min >= remind_trigger:
-            self._reminded_today = True
-            # 弹窗提醒
-            should_out_str = self._min_to_time_str(should_out_min)
-            msg = f"现在是 {now.strftime('%H:%M')}\n应下班时间：{should_out_str}"
-            if remind_offset > 0:
-                msg += f"\n（提前 {remind_offset} 分钟提醒）"
-            self.tray_icon.showMessage(
-                "下班提醒 🎉",
-                msg,
-                QSystemTrayIcon.Information,
-                8000
-            )
+        # 获取提前提醒分钟数（SpinBox 设置值）
+        remind_offset = self.spin_remind.value() if hasattr(self, "spin_remind") else 5
 
+        # 触发条件：当前时间 >= 应下班时间 - 提前分钟数（已到下班时间同样触发）
+        trigger_min = should_out_min - remind_offset
+        if now_min < trigger_min:
+            return  # 还没到提醒时间
+        if now_min > should_out_min + 60:
+            return  # 超过下班时间1小时以上，说明是新的一天或异常，不弹
+
+        self._reminded_today = True
+        self._show_remind_dialog(should_out_min)
+
+    def _manual_show_remind(self):
+        """手动触发下班提醒弹窗"""
+        should_out_min = self._calc_today_should_out_min()
+        if should_out_min is not None:
+            self._show_remind_dialog(should_out_min)
+            return
+
+        # 降级：无今日打卡数据时，基于配置估算应下班时间
+        config = self._load_work_config()
+        standed_up  = self._parse_time_to_min(config.get("work_start", "07:00"))
+        rest1_end   = self._parse_time_to_min(config.get("rest_end",   "13:00"))
+        rest1_begin = self._parse_time_to_min(config.get("rest_start", "12:00"))
+        rest2_begin = self._parse_time_to_min(config.get("dinner_start","17:00"))
+        rest2_end   = self._parse_time_to_min(config.get("dinner_end", "17:45"))
+        base = standed_up + 8 * 60 + (rest1_end - rest1_begin)
+        should_out_min = base + (rest2_end - rest2_begin)  # 含晚休
+        self._show_remind_dialog(should_out_min)
 
     # ─── 逻辑 ───
 
@@ -2105,6 +2299,9 @@ class MainWindow(QMainWindow):
             self._headers  = headers
             self._all_data = rows
             self._has_data = True
+            # 数据成功获取，取消失败重试倒计时
+            self._retry_remain = 0
+            self._lbl_retry.setVisible(False)
 
             if not rows:
                 self._lbl_status.setText("该时间段内无考勤记录")
@@ -2149,13 +2346,10 @@ class MainWindow(QMainWindow):
     def _on_fetch_failed(self, msg):
         self.progress_bar.setVisible(False)
         self._lbl_status.setText(f"获取失败：{msg}")
-        reply = QMessageBox.question(
-            self, "获取失败",
-            f"数据获取失败：{msg}\n\n是否加载演示数据预览界面？",
-            QMessageBox.Yes | QMessageBox.No
-        )
-        if reply == QMessageBox.Yes:
-            self._load_demo_data()
+        # 不弹窗，直接在左侧面板显示失败提示并开始 30 秒重试倒计时
+        self._retry_remain = 30
+        self._lbl_retry.setVisible(True)
+        self._lbl_retry.setText("⚠ 数据获取失败\n30 秒后自动重试...")
 
     def _load_demo_data(self):
         headers = ["工号", "姓名", "部门", "考勤日期", "考勤周数", "班次",
@@ -2630,6 +2824,10 @@ class MainWindow(QMainWindow):
                 worked_time_str = f"还可睡{min2hm(standed_up - current_min)}"
 
         # 更新考勤周期加班汇总
+        # 如果是今日，保存应下班分钟数供弹窗使用
+        if target_date == datetime.date.today():
+            self._today_should_out_min = title_dowm_time
+
         # 更新右侧详情面板
         if hasattr(self, '_detail_lines'):
             self._detail_lines["clock_records"].setText(clock_records_str)
@@ -2763,7 +2961,7 @@ class MainWindow(QMainWindow):
         
         # 退出
         act_quit = QAction("退出", self)
-        act_quit.triggered.connect(self._logout)
+        act_quit.triggered.connect(self._quit_app)
         act_quit.setIcon(self.style().standardIcon(QStyle.SP_TitleBarCloseButton))
         tray_menu.addAction(act_quit)
         
@@ -2782,28 +2980,16 @@ class MainWindow(QMainWindow):
             self.activateWindow()
     
     def closeEvent(self, event):
-        """窗口关闭事件，最小化到托盘而不是退出"""
+        """窗口关闭事件，直接最小化到托盘而不是退出"""
         # 退出登录时直接关闭，不弹对话框
         if self._is_logging_out:
             self.tray_icon.hide()
             event.accept()
             return
 
-        reply = QMessageBox.question(
-            self, "关闭确认", "是否最小化到系统托盘？（在托盘双击可恢复）",
-            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel
-        )
-        if reply == QMessageBox.Yes:
-            # 最小化到托盘
-            self.hide()
-            event.ignore()
-        elif reply == QMessageBox.No:
-            # 真正退出
-            self.tray_icon.hide()
-            event.accept()
-        else:
-            # 取消
-            event.ignore()
+        # 直接最小化到托盘
+        self.hide()
+        event.ignore()
     
     def hideEvent(self, event):
         """窗口隐藏时最小化到托盘"""
@@ -2827,6 +3013,12 @@ class MainWindow(QMainWindow):
                 self.login_window.show()
             self.close()
 
+    def _quit_app(self):
+        """直接从托盘或底部按钮退出程序（关闭进程）"""
+        self._is_logging_out = True  # 绕过closeEvent对话框
+        self.tray_icon.hide()
+        QApplication.instance().quit()
+
     def _open_config(self):
         """打开上下班配置弹窗"""
         self._config_win = ConfigWindow()
@@ -2845,8 +3037,6 @@ class MainWindow(QMainWindow):
             "dinner_start":    "17:00",   # 晚饭开始
             "dinner_end":      "17:45",   # 晚饭结束
             "flex_enabled":    False,
-            "remind_enabled":  True,
-            "remind_offset":   0,         # 下班提醒提前量（分钟），0=正点提醒
             "week_mode":       "standard",
             "late_threshold":  0,
         }
@@ -2903,6 +3093,8 @@ def main():
         app.setApplicationName("考勤管理系统")
         app.setStyle("Fusion")
         app.setFont(QFont("Microsoft YaHei", 10))
+        # 防止关闭所有窗口时自动退出（程序生命周期由托盘图标控制）
+        app.setQuitOnLastWindowClosed(False)
 
         login_win = LoginWindow()
         main_win_holder = [None]
