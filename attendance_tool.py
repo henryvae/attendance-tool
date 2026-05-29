@@ -2,7 +2,7 @@
 考勤管理工具 - intretech UMS 系统
 https://ums.intretech.com/ums/AtteUserReportManage.aspx
 
-v91 - 将下班提醒区域的🔔 emoji 图标替换为自定义图片图标（base64内嵌，无需额外资源文件）
+v92 - 移除调试日志文件生成（debug.log、debug_should_out.log）
 
 v90 - 修复下班提醒弹窗：已到下班时间时显示"已到下班时间"（蓝色标题），未到时显示"还有X分钟"；_check_remind 下班后1小时内均可触发
 
@@ -21,7 +21,7 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v91"
+APP_VERSION = "v92"
 import json
 import asyncio
 import threading
@@ -2306,22 +2306,6 @@ class MainWindow(QMainWindow):
             if not rows:
                 self._lbl_status.setText("该时间段内无考勤记录")
             else:
-                # 写调试日志：记录列名和数据样本
-                _debug_log = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "debug.log")
-                try:
-                    with open(_debug_log, "w", encoding="utf-8") as _f:
-                        _f.write(f"调试时间: {datetime.datetime.now()}\n")
-                        _f.write(f"表头: {headers}\n")
-                        _f.write(f"行数: {len(rows)}\n")
-                        if rows:
-                            _f.write(f"第一行数据: {rows[0]}\n")
-                            # 找关键列
-                            for i, h in enumerate(headers):
-                                if any(k in h for k in ["考勤日期", "有效打卡时间", "打卡时间", "出勤", "平加", "周加", "假加"]):
-                                    _f.write(f"  [{i}] {h} = {rows[0][i] if i < len(rows[0]) else 'N/A'}\n")
-                except Exception:
-                    pass
-
                 self._populate_table(headers, rows)
                 self._update_stats(headers, rows)
                 self._refresh_detail_panel()
@@ -2622,53 +2606,33 @@ class MainWindow(QMainWindow):
                  - 加班设置 = 0 → 返回 base（不重复加晚休）
                  - 加班设置 > 0 → 视情况补加晚休 + 加班
             """
-            debug_lines = []
-            debug_lines.append(f"[calc_should_out] first_clock_in={first_clock_in}({self._min_to_time_str(first_clock_in)}), standed_up={standed_up}({self._min_to_time_str(standed_up)})")
-            
             # 步骤1：有效上班时间
             if first_clock_in < standed_up:
                 eff_start = standed_up
             else:
                 eff_start = first_clock_in
-            debug_lines.append(f"[calc_should_out] eff_start={eff_start}({self._min_to_time_str(eff_start)})")
 
             # 步骤2：base = 有效上班 + 8H + 午休时长
             rest1_len = rest1_end - rest1_begin   # 午休时长（分钟）
             rest2_len = rest2_end - rest2_begin   # 晚休时长（分钟）
             base = eff_start + 8 * 60 + rest1_len
-            debug_lines.append(f"[calc_should_out] rest1_len={rest1_len}, rest2_len={rest2_len}, base={base}({self._min_to_time_str(base)})")
 
             # 加班设置
             ot_h = int(self.combo_ot_h.currentText()) if hasattr(self, 'combo_ot_h') else 0
             ot_m = int(self.combo_ot_m.currentText()) if hasattr(self, 'combo_ot_m') else 0
             ot_total = ot_h * 60 + ot_m
-            debug_lines.append(f"[calc_should_out] ot_total={ot_total}({ot_h}h{ot_m}m)")
 
             # 步骤3/4：根据 (base + ot_total) 与晚休开始时间的关系决定是否加晚休
             result = None
             work_done_time = base + ot_total  # 8小时工作完成后加上加班的时间点
-            debug_lines.append(f"[calc_should_out] base({base})={self._min_to_time_str(base)}, ot_total={ot_total}, work_done_time={work_done_time}({self._min_to_time_str(work_done_time)})")
-            
+
             if work_done_time < rest2_begin:
                 # 加班后时间仍在晚休开始之前，不加晚休
-                debug_lines.append(f"[calc_should_out] work_done_time({work_done_time}) < rest2_begin({rest2_begin}), 不加晚休")
                 result = work_done_time
-                debug_lines.append(f"[calc_should_out] result=work_done_time={result}({self._min_to_time_str(result)})")
             else:
                 # 加班后时间超过晚休开始，需要等晚休
-                debug_lines.append(f"[calc_should_out] work_done_time({work_done_time}) >= rest2_begin({rest2_begin}), 加晚休{rest2_len}分钟")
                 result = work_done_time + rest2_len
-                debug_lines.append(f"[calc_should_out] result=work_done_time+rest2_len={result}({self._min_to_time_str(result)})")
-            
-            # 写日志
-            try:
-                with open("debug_should_out.log", "a", encoding="utf-8") as f:
-                    for line in debug_lines:
-                        f.write(line + "\n")
-                    f.write(f"[calc_should_out] FINAL RESULT: {result}({self._min_to_time_str(result)})\n\n")
-            except:
-                pass
-            
+
             return result
 
         # 大小周 + 周几 → 今日应工作分钟数（与ku.py work_time_check一致）
