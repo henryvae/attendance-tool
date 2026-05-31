@@ -2,7 +2,7 @@
 考勤管理工具 - intretech UMS 系统
 https://ums.intretech.com/ums/AtteUserReportManage.aspx
 
-v92 - 移除调试日志文件生成（debug.log、debug_should_out.log）
+v93 - 修复加班时应下班时间计算：加班时长叠加在标准下班时间（含晚休）之后，而非加在8h完成点再判晚休
 
 v90 - 修复下班提醒弹窗：已到下班时间时显示"已到下班时间"（蓝色标题），未到时显示"还有X分钟"；_check_remind 下班后1小时内均可触发
 
@@ -21,7 +21,7 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v92"
+APP_VERSION = "v93"
 import json
 import asyncio
 import threading
@@ -2091,17 +2091,21 @@ class MainWindow(QMainWindow):
         eff_start = standed_up if first_clock_in < standed_up else first_clock_in
         base = eff_start + 8 * 60 + (rest1_end - rest1_begin)
 
+        # 先算不含加班的标准下班时间
+        rest2_len = rest2_end - rest2_begin
+        if base < rest2_begin:
+            std_out = base
+        else:
+            std_out = base + rest2_len
+
         ot_str = self._get_ot_str_from_row(row)
         ot_parts = ot_str.replace("时", ":").replace("分", "").split(":")
         ot_h = int(ot_parts[0]) if len(ot_parts) > 0 and ot_parts[0].isdigit() else 0
         ot_m = int(ot_parts[1]) if len(ot_parts) > 1 and ot_parts[1].isdigit() else 0
         ot_total = ot_h * 60 + ot_m
 
-        work_done_time = base + ot_total
-        if work_done_time < rest2_begin:
-            return work_done_time
-        else:
-            return work_done_time + (rest2_end - rest2_begin)
+        # 加班直接叠加在标准下班时间之后
+        return std_out + ot_total
 
     def _show_remind_dialog(self, should_out_min):
         """显示下班提醒弹窗（should_out_min: 应下班分钟数）"""
@@ -2612,27 +2616,29 @@ class MainWindow(QMainWindow):
             else:
                 eff_start = first_clock_in
 
-            # 步骤2：base = 有效上班 + 8H + 午休时长
+            # 步骤2：base = 有效上班 + 8H + 午休时长（不含加班）
             rest1_len = rest1_end - rest1_begin   # 午休时长（分钟）
             rest2_len = rest2_end - rest2_begin   # 晚休时长（分钟）
             base = eff_start + 8 * 60 + rest1_len
 
-            # 加班设置
+            # 步骤3：先算不含加班的标准下班时间（是否需要跨晚休）
+            if base < rest2_begin:
+                # 标准8h下班在晚休之前，不加晚休
+                std_out = base
+            else:
+                # 标准8h下班跨过晚休，需加晚休
+                std_out = base + rest2_len
+
+            # 步骤4：在标准下班时间上叠加加班时长
             ot_h = int(self.combo_ot_h.currentText()) if hasattr(self, 'combo_ot_h') else 0
             ot_m = int(self.combo_ot_m.currentText()) if hasattr(self, 'combo_ot_m') else 0
             ot_total = ot_h * 60 + ot_m
 
-            # 步骤3/4：根据 (base + ot_total) 与晚休开始时间的关系决定是否加晚休
-            result = None
-            work_done_time = base + ot_total  # 8小时工作完成后加上加班的时间点
+            if ot_total == 0:
+                return std_out
 
-            if work_done_time < rest2_begin:
-                # 加班后时间仍在晚休开始之前，不加晚休
-                result = work_done_time
-            else:
-                # 加班后时间超过晚休开始，需要等晚休
-                result = work_done_time + rest2_len
-
+            # 加班在晚休之后：直接在标准下班后加
+            result = std_out + ot_total
             return result
 
         # 大小周 + 周几 → 今日应工作分钟数（与ku.py work_time_check一致）
