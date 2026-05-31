@@ -2,7 +2,7 @@
 考勤管理工具 - intretech UMS 系统
 https://ums.intretech.com/ums/AtteUserReportManage.aspx
 
-v93 - 修复加班时应下班时间计算：加班时长叠加在标准下班时间（含晚休）之后，而非加在8h完成点再判晚休
+v93 - 修复加班时应下班时间计算：以 work_end 配置为基准下班时间，加班直接叠加在后面，迟到则顺延
 
 v90 - 修复下班提醒弹窗：已到下班时间时显示"已到下班时间"（蓝色标题），未到时显示"还有X分钟"；_check_remind 下班后1小时内均可触发
 
@@ -2082,21 +2082,16 @@ class MainWindow(QMainWindow):
         if first_clock_in is None:
             return None
 
-        standed_up  = self._parse_time_to_min(config.get("work_start", "07:00"))
-        rest1_begin = self._parse_time_to_min(config.get("rest_start", "12:00"))
-        rest1_end   = self._parse_time_to_min(config.get("rest_end",   "13:00"))
-        rest2_begin = self._parse_time_to_min(config.get("dinner_start","17:00"))
-        rest2_end   = self._parse_time_to_min(config.get("dinner_end", "17:45"))
+        standed_up   = self._parse_time_to_min(config.get("work_start",   "07:00"))
+        standed_dowm = self._parse_time_to_min(config.get("work_end",     "17:00"))
 
         eff_start = standed_up if first_clock_in < standed_up else first_clock_in
-        base = eff_start + 8 * 60 + (rest1_end - rest1_begin)
 
-        # 先算不含加班的标准下班时间
-        rest2_len = rest2_end - rest2_begin
-        if base < rest2_begin:
-            std_out = base
+        # 以配置的标准下班时间为基准；迟到则顺延
+        if eff_start <= standed_up:
+            base_out = standed_dowm
         else:
-            std_out = base + rest2_len
+            base_out = standed_dowm + (eff_start - standed_up)
 
         ot_str = self._get_ot_str_from_row(row)
         ot_parts = ot_str.replace("时", ":").replace("分", "").split(":")
@@ -2104,8 +2099,7 @@ class MainWindow(QMainWindow):
         ot_m = int(ot_parts[1]) if len(ot_parts) > 1 and ot_parts[1].isdigit() else 0
         ot_total = ot_h * 60 + ot_m
 
-        # 加班直接叠加在标准下班时间之后
-        return std_out + ot_total
+        return base_out + ot_total
 
     def _show_remind_dialog(self, should_out_min):
         """显示下班提醒弹窗（should_out_min: 应下班分钟数）"""
@@ -2616,30 +2610,26 @@ class MainWindow(QMainWindow):
             else:
                 eff_start = first_clock_in
 
-            # 步骤2：base = 有效上班 + 8H + 午休时长（不含加班）
-            rest1_len = rest1_end - rest1_begin   # 午休时长（分钟）
-            rest2_len = rest2_end - rest2_begin   # 晚休时长（分钟）
-            base = eff_start + 8 * 60 + rest1_len
-
-            # 步骤3：先算不含加班的标准下班时间（是否需要跨晚休）
-            if base < rest2_begin:
-                # 标准8h下班在晚休之前，不加晚休
-                std_out = base
-            else:
-                # 标准8h下班跨过晚休，需加晚休
-                std_out = base + rest2_len
-
-            # 步骤4：在标准下班时间上叠加加班时长
+            # 步骤2：以配置的标准下班时间为基准（不重新推算），加班在此后叠加
+            # standed_dowm = work_end 配置（例如 18:00），包含晚休在内
             ot_h = int(self.combo_ot_h.currentText()) if hasattr(self, 'combo_ot_h') else 0
             ot_m = int(self.combo_ot_m.currentText()) if hasattr(self, 'combo_ot_m') else 0
             ot_total = ot_h * 60 + ot_m
 
-            if ot_total == 0:
-                return std_out
+            # 步骤3：若上班时间晚于最早上班（迟到），则下班时间顺延
+            rest1_len = rest1_end - rest1_begin   # 午休时长（分钟）
+            rest2_len = rest2_end - rest2_begin   # 晚休时长（分钟）
 
-            # 加班在晚休之后：直接在标准下班后加
-            result = std_out + ot_total
-            return result
+            if eff_start <= standed_up:
+                # 正常/提前打卡：直接用配置的标准下班时间
+                base_out = standed_dowm
+            else:
+                # 迟到：在配置下班时间基础上顺延（迟到了多少分钟，下班就晚多少）
+                delay = eff_start - standed_up
+                base_out = standed_dowm + delay
+
+            # 步骤4：加班直接叠加在标准下班之后
+            return base_out + ot_total
 
         # 大小周 + 周几 → 今日应工作分钟数（与ku.py work_time_check一致）
         weekday      = target_date.weekday() + 1   # ku.py 用 isocalendar weekday：1=周一, 7=周日
