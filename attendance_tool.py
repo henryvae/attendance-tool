@@ -2,7 +2,7 @@
 考勤管理工具 - intretech UMS 系统
 https://ums.intretech.com/ums/AtteUserReportManage.aspx
 
-v95 - 修复无加班时应用 work_end 作为应下班基准（base+晚休 < work_end 时取 work_end）
+v96 - 修复应下班时间：加班=0不加晚休；加班>0超过晚休开始才加晚休（用实际打卡替代配置rest2_end）
 
 v90 - 修复下班提醒弹窗：已到下班时间时显示"已到下班时间"（蓝色标题），未到时显示"还有X分钟"；_check_remind 下班后1小时内均可触发
 
@@ -21,7 +21,7 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v95"
+APP_VERSION = "v96"
 import json
 import asyncio
 import threading
@@ -2097,9 +2097,17 @@ class MainWindow(QMainWindow):
         ot_m = int(ot_parts[1]) if len(ot_parts) > 1 and ot_parts[1].isdigit() else 0
         ot_total = ot_h * 60 + ot_m
 
-        work_done_time = base + ot_total
         rest2_len = rest2_end - rest2_begin
-        # 严格超过晚休开始才加晚休，恰好等于时直接走
+
+        # 加班=0：不加晚休
+        if ot_total == 0:
+            if base <= rest2_begin:
+                return base
+            else:
+                return base + rest2_len
+
+        # 加班>0：超过晚休开始才加晚休
+        work_done_time = base + ot_total
         if work_done_time <= rest2_begin:
             return work_done_time
         else:
@@ -2596,14 +2604,9 @@ class MainWindow(QMainWindow):
             """
             计算应下班时间（分钟数）。
             规则：
-              1. 确定有效上班时间：打卡 < 最早上班 → 用最早上班；否则用打卡时间
-              2. base = 有效上班 + 8H + 午休时长（不含晚休）
-              3. 实际晚休结束 = up_list 中晚休开始后第一个再上班打卡（如果有）
-                 → 晚休时长 = 实际晚休结束 - rest2_begin（最少是配置的 rest2_len）
-              4. 应下班 = max(base + 实际晚休时长, work_end) + 加班
-                 含义：8h+午休完成时间若早于晚休开始，应下班 = work_end（标准下班），
-                       而不是 base + 晚休时长（会早于 work_end）。
-                 例如：7:48 上班 + 8h + 75(午) = 17:03 < 18:00 → 应下班 = 18:00
+              加班=0：不加晚休。base ≤ 晚休开始 → 返回 base；base > 晚休开始 → 加晚休
+              加班>0：work_done = base + 加班；≤ 晚休开始 → 不加晚休；> 晚休开始 → 加晚休
+              晚休时长：加班>0时用实际打卡替代配置rest2_end（若打卡晚于配置）
             """
             # 步骤1：有效上班时间
             if first_clock_in < standed_up:
@@ -2612,27 +2615,35 @@ class MainWindow(QMainWindow):
                 eff_start = first_clock_in
 
             # 步骤2：base = 有效上班 + 8H + 午休时长（不含晚休）
-            rest1_len = rest1_end - rest1_begin   # 午休时长（分钟）
+            rest1_len = rest1_end - rest1_begin
             base = eff_start + 8 * 60 + rest1_len
 
-            # 步骤3：确定实际晚休结束时间
-            # 找 up_list 中第一个晚休开始（≥ rest2_begin）后再次上班的打卡
-            # 即：用户晚休结束后实际开始工作的打卡时间（替代配置的 rest2_end）
-            actual_dinner_end = rest2_end
-            for u in up_list:
-                if u >= rest2_begin:
-                    actual_dinner_end = u
-                    break
-            rest2_len = actual_dinner_end - rest2_begin  # 实际晚休时长
-
-            # 步骤4：加班设置
+            # 步骤3：加班设置
             ot_h = int(self.combo_ot_h.currentText()) if hasattr(self, 'combo_ot_h') else 0
             ot_m = int(self.combo_ot_m.currentText()) if hasattr(self, 'combo_ot_m') else 0
             ot_total = ot_h * 60 + ot_m
 
-            # 步骤5：标准下班 = max(base + 实际晚休时长, work_end)；加班叠加在标准下班后
-            std_out = max(base + rest2_len, standed_dowm)
-            return std_out + ot_total
+            # 加班=0：不加晚休
+            if ot_total == 0:
+                if base <= rest2_begin:
+                    return base          # 8h完成在晚休之前，直接走
+                else:
+                    return base + (rest2_end - rest2_begin)  # 8h跨越晚休，加晚休
+
+            # 加班>0：work_done_time = base + 加班
+            work_done_time = base + ot_total
+
+            if work_done_time <= rest2_begin:
+                return work_done_time    # 加班后仍在晚休之前，不加晚休
+
+            # 加班后超过晚休开始 → 加晚休（用实际打卡替代配置）
+            actual_dinner_end = rest2_end
+            for u in up_list:
+                if u >= rest2_begin:
+                    actual_dinner_end = max(actual_dinner_end, u)
+                    break
+            dinner_len = actual_dinner_end - rest2_begin
+            return work_done_time + dinner_len
 
         # 大小周 + 周几 → 今日应工作分钟数（与ku.py work_time_check一致）
         weekday      = target_date.weekday() + 1   # ku.py 用 isocalendar weekday：1=周一, 7=周日
