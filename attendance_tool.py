@@ -2,7 +2,7 @@
 考勤管理工具 - intretech UMS 系统
 https://ums.intretech.com/ums/AtteUserReportManage.aspx
 
-v94 - 修复应下班时间：晚休时长用"实际晚休结束打卡-晚休开始"（如有打卡晚于配置的rest2_end则扩展晚休），加班叠加在标准下班后
+v95 - 修复无加班时应用 work_end 作为应下班基准（base+晚休 < work_end 时取 work_end）
 
 v90 - 修复下班提醒弹窗：已到下班时间时显示"已到下班时间"（蓝色标题），未到时显示"还有X分钟"；_check_remind 下班后1小时内均可触发
 
@@ -21,7 +21,7 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v94"
+APP_VERSION = "v95"
 import json
 import asyncio
 import threading
@@ -2600,7 +2600,10 @@ class MainWindow(QMainWindow):
               2. base = 有效上班 + 8H + 午休时长（不含晚休）
               3. 实际晚休结束 = up_list 中晚休开始后第一个再上班打卡（如果有）
                  → 晚休时长 = 实际晚休结束 - rest2_begin（最少是配置的 rest2_len）
-              4. 应下班 = base + 实际晚休时长 + 加班
+              4. 应下班 = max(base + 实际晚休时长, work_end) + 加班
+                 含义：8h+午休完成时间若早于晚休开始，应下班 = work_end（标准下班），
+                       而不是 base + 晚休时长（会早于 work_end）。
+                 例如：7:48 上班 + 8h + 75(午) = 17:03 < 18:00 → 应下班 = 18:00
             """
             # 步骤1：有效上班时间
             if first_clock_in < standed_up:
@@ -2627,8 +2630,9 @@ class MainWindow(QMainWindow):
             ot_m = int(self.combo_ot_m.currentText()) if hasattr(self, 'combo_ot_m') else 0
             ot_total = ot_h * 60 + ot_m
 
-            # 步骤5：标准下班 = base + 实际晚休时长；加班叠加在标准下班后
-            return base + rest2_len + ot_total
+            # 步骤5：标准下班 = max(base + 实际晚休时长, work_end)；加班叠加在标准下班后
+            std_out = max(base + rest2_len, standed_dowm)
+            return std_out + ot_total
 
         # 大小周 + 周几 → 今日应工作分钟数（与ku.py work_time_check一致）
         weekday      = target_date.weekday() + 1   # ku.py 用 isocalendar weekday：1=周一, 7=周日
