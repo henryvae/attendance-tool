@@ -21,7 +21,7 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v96"
+APP_VERSION = "v98"
 import json
 import asyncio
 import threading
@@ -2099,12 +2099,18 @@ class MainWindow(QMainWindow):
 
         rest2_len = rest2_end - rest2_begin
 
-        # 加班=0：不加晚休
+        # 加班=0：不加晚休时长（用实际晚休结束打卡替代配置）
         if ot_total == 0:
             if base <= rest2_begin:
                 return base
             else:
-                return base + rest2_len
+                # 实际晚休结束 = up_list 中首个 ≥ rest2_begin 的打卡（晚休后再上班打卡）
+                actual_dinner_end = rest2_end
+                for u in up_list:
+                    if u >= rest2_begin:
+                        actual_dinner_end = max(actual_dinner_end, u)
+                        break
+                return base + (actual_dinner_end - rest2_begin)
 
         # 加班>0：超过晚休开始才加晚休
         work_done_time = base + ot_total
@@ -2606,7 +2612,7 @@ class MainWindow(QMainWindow):
             规则：
               加班=0：不加晚休。base ≤ 晚休开始 → 返回 base；base > 晚休开始 → 加晚休
               加班>0：work_done = base + 加班；≤ 晚休开始 → 不加晚休；> 晚休开始 → 加晚休
-              晚休时长：加班>0时用实际打卡替代配置rest2_end（若打卡晚于配置）
+              晚休时长：用 up_list 中首个 ≥ rest2_begin 的打卡作为实际晚休结束（替代配置rest2_end）
             """
             # 步骤1：有效上班时间
             if first_clock_in < standed_up:
@@ -2623,12 +2629,19 @@ class MainWindow(QMainWindow):
             ot_m = int(self.combo_ot_m.currentText()) if hasattr(self, 'combo_ot_m') else 0
             ot_total = ot_h * 60 + ot_m
 
-            # 加班=0：不加晚休
+            # 实际晚休结束 = up_list 中首个 ≥ rest2_begin 的打卡（晚休后再上班打卡）
+            actual_dinner_end = rest2_end
+            for u in up_list:
+                if u >= rest2_begin:
+                    actual_dinner_end = max(actual_dinner_end, u)
+                    break
+
+            # 加班=0：不加晚休时长（用实际晚休结束替代配置）
             if ot_total == 0:
                 if base <= rest2_begin:
                     return base          # 8h完成在晚休之前，直接走
                 else:
-                    return base + (rest2_end - rest2_begin)  # 8h跨越晚休，加晚休
+                    return base + (actual_dinner_end - rest2_begin)  # 8h跨越晚休，加实际晚休
 
             # 加班>0：work_done_time = base + 加班
             work_done_time = base + ot_total
@@ -2637,11 +2650,6 @@ class MainWindow(QMainWindow):
                 return work_done_time    # 加班后仍在晚休之前，不加晚休
 
             # 加班后超过晚休开始 → 加晚休（用实际打卡替代配置）
-            actual_dinner_end = rest2_end
-            for u in up_list:
-                if u >= rest2_begin:
-                    actual_dinner_end = max(actual_dinner_end, u)
-                    break
             dinner_len = actual_dinner_end - rest2_begin
             return work_done_time + dinner_len
 
