@@ -21,7 +21,7 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v97"
+APP_VERSION = "v96"
 import json
 import asyncio
 import threading
@@ -2099,9 +2099,12 @@ class MainWindow(QMainWindow):
 
         rest2_len = rest2_end - rest2_begin
 
-        # 加班=0：一律不加晚休
+        # 加班=0：不加晚休
         if ot_total == 0:
-            return base
+            if base <= rest2_begin:
+                return base
+            else:
+                return base + rest2_len
 
         # 加班>0：超过晚休开始才加晚休
         work_done_time = base + ot_total
@@ -2620,9 +2623,12 @@ class MainWindow(QMainWindow):
             ot_m = int(self.combo_ot_m.currentText()) if hasattr(self, 'combo_ot_m') else 0
             ot_total = ot_h * 60 + ot_m
 
-            # 加班=0：一律不加晚休（用户明确：没有加班就不算晚休）
+            # 加班=0：不加晚休
             if ot_total == 0:
-                return base
+                if base <= rest2_begin:
+                    return base          # 8h完成在晚休之前，直接走
+                else:
+                    return base + (rest2_end - rest2_begin)  # 8h跨越晚休，加晚休
 
             # 加班>0：work_done_time = base + 加班
             work_done_time = base + ot_total
