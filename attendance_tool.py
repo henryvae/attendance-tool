@@ -21,7 +21,7 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v99"
+APP_VERSION = "v100"
 import json
 import asyncio
 import threading
@@ -2111,12 +2111,17 @@ class MainWindow(QMainWindow):
                         cnt += 1
 
         # 大小周判断：根据日历周数奇偶性，奇数=小周，偶数=大周
-        # 小周周六工作7小时，其余工作日8小时
-        work_hours = 8 * 60
-        if today.weekday() + 1 == 6:  # 周六
+        # 小周周六工作7h；大周周六与周日一律不工作
+        wd = today.weekday() + 1   # 1=周一 ... 7=周日
+        if wd == 7:                # 周日
+            work_hours = 0
+        elif wd == 6:              # 周六
             week_num = today.isocalendar()[1]
-            if week_num % 2 != 0:  # 奇数周=小周
-                work_hours = 7 * 60
+            work_hours = 7 * 60 if week_num % 2 != 0 else 0  # 小周7h，大周0
+        else:                      # 周一~周五
+            work_hours = 8 * 60
+        if work_hours == 0:        # 休息日无需计算应下班
+            return None
         base = eff_start + work_hours + (rest1_end - rest1_begin)
 
         ot_str = self._get_ot_str_from_row(row)
@@ -2652,12 +2657,17 @@ class MainWindow(QMainWindow):
             # 步骤2：base = 有效上班 + 工时 + 午休时长（不含晚休）
             rest1_len = rest1_end - rest1_begin
             # 大小周判断：根据日历周数奇偶性，奇数=小周，偶数=大周
-            # 小周周六工作7小时，其余工作日8小时
-            work_hours = 8 * 60
-            if target_date.weekday() + 1 == 6:  # 周六
+            # 小周周六工作7h；大周周六与周日一律不工作
+            wd = target_date.weekday() + 1   # 1=周一 ... 7=周日
+            if wd == 7:                      # 周日
+                work_hours = 0
+            elif wd == 6:                    # 周六
                 week_num = target_date.isocalendar()[1]
-                if week_num % 2 != 0:  # 奇数周=小周
-                    work_hours = 7 * 60
+                work_hours = 7 * 60 if week_num % 2 != 0 else 0  # 小周7h，大周0
+            else:                            # 周一~周五
+                work_hours = 8 * 60
+            if work_hours == 0:              # 休息日无需计算应下班
+                return 0
             base = eff_start + work_hours + rest1_len
 
             # 步骤3：加班设置
