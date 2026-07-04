@@ -21,7 +21,7 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v98"
+APP_VERSION = "v99"
 import json
 import asyncio
 import threading
@@ -2089,7 +2089,35 @@ class MainWindow(QMainWindow):
         rest2_end   = self._parse_time_to_min(config.get("dinner_end", "17:45"))
 
         eff_start = standed_up if first_clock_in < standed_up else first_clock_in
-        base = eff_start + 8 * 60 + (rest1_end - rest1_begin)
+
+        # 解析完整打卡记录 → up_list（用于实际晚休结束判断）
+        up_list = []
+        headers = self._headers
+        clock_col = -1
+        for i, h in enumerate(headers):
+            if any(k in h for k in ["打卡", "时间", "考勤时间"]):
+                clock_col = i
+                break
+        if 0 <= clock_col < len(row):
+            clock_str = str(row[clock_col]).strip()
+            if clock_str and clock_str not in ("--", ""):
+                cleaned = clock_str.replace("，", ",").replace("[", "").replace("]", "")
+                cnt = 0
+                for t in cleaned.split(","):
+                    t = t.strip()
+                    if t and ":" in t:
+                        if cnt % 2 == 0:
+                            up_list.append(self._parse_time_to_min(t))
+                        cnt += 1
+
+        # 大小周判断：根据日历周数奇偶性，奇数=小周，偶数=大周
+        # 小周周六工作7小时，其余工作日8小时
+        work_hours = 8 * 60
+        if today.weekday() + 1 == 6:  # 周六
+            week_num = today.isocalendar()[1]
+            if week_num % 2 != 0:  # 奇数周=小周
+                work_hours = 7 * 60
+        base = eff_start + work_hours + (rest1_end - rest1_begin)
 
         ot_str = self._get_ot_str_from_row(row)
         ot_parts = ot_str.replace("时", ":").replace("分", "").split(":")
@@ -2610,7 +2638,8 @@ class MainWindow(QMainWindow):
             """
             计算应下班时间（分钟数）。
             规则：
-              加班=0：不加晚休。base ≤ 晚休开始 → 返回 base；base > 晚休开始 → 加晚休
+              工时：小周周六7h，其余工作日8h（按日历周数奇偶判断，奇数=小周）
+              加班=0：base ≤ 晚休开始 → 返回 base；base > 晚休开始 → 加晚休
               加班>0：work_done = base + 加班；≤ 晚休开始 → 不加晚休；> 晚休开始 → 加晚休
               晚休时长：用 up_list 中首个 ≥ rest2_begin 的打卡作为实际晚休结束（替代配置rest2_end）
             """
@@ -2620,9 +2649,16 @@ class MainWindow(QMainWindow):
             else:
                 eff_start = first_clock_in
 
-            # 步骤2：base = 有效上班 + 8H + 午休时长（不含晚休）
+            # 步骤2：base = 有效上班 + 工时 + 午休时长（不含晚休）
             rest1_len = rest1_end - rest1_begin
-            base = eff_start + 8 * 60 + rest1_len
+            # 大小周判断：根据日历周数奇偶性，奇数=小周，偶数=大周
+            # 小周周六工作7小时，其余工作日8小时
+            work_hours = 8 * 60
+            if target_date.weekday() + 1 == 6:  # 周六
+                week_num = target_date.isocalendar()[1]
+                if week_num % 2 != 0:  # 奇数周=小周
+                    work_hours = 7 * 60
+            base = eff_start + work_hours + rest1_len
 
             # 步骤3：加班设置
             ot_h = int(self.combo_ot_h.currentText()) if hasattr(self, 'combo_ot_h') else 0
