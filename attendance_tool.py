@@ -21,7 +21,7 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v101"
+APP_VERSION = "v102"
 import json
 import asyncio
 import threading
@@ -2724,6 +2724,7 @@ class MainWindow(QMainWindow):
         # 解析今日打卡记录 → up_list / dowm_list（与ku.py up_checkTime_List一致）
         up_list   = []
         dowm_list = []
+        _odd_last_dup = False  # 奇数打卡最后一个为重复/误打卡（<15min内）
 
         for row in rows:
             if date_col < 0:
@@ -2762,12 +2763,13 @@ class MainWindow(QMainWindow):
                                     dowm_list.append(t_min)
                                 cnt += 1
                         # 打卡数为奇数时，最后一个未配对打卡的处理：
-                        # 若与最后一个下班打卡间隔很短（≤30min），视为重复/误打卡，忽略它
+                        # 若与最后一个下班打卡间隔很短（<15min），视为重复/误打卡
+                        # 上班列表中不移除，但后续"打卡对等"判断会跳过（走已下班分支）
                         if len(temp_times) % 2 != 0 and len(dowm_list) > 0:
                             last_up = temp_times[-1]
                             last_dowm = dowm_list[-1]
-                            if last_up - last_dowm <= 30:
-                                up_list.pop()  # 从 up_list 移除这个误识别的上班打卡
+                            if last_up - last_dowm < 15:
+                                _odd_last_dup = True
                 break
 
         # 与ku.py逻辑一致：up/dowm列表中[0]=0 表示无记录
@@ -2784,7 +2786,7 @@ class MainWindow(QMainWindow):
 
         if up_times > 0:
 
-            if up_times != dowm_times:
+            if up_times != dowm_times and not _odd_last_dup:
                 # ---- 打卡不对等：在上班中，计算应下班时间 ----
 
                 # 应下班时间：用公共计算函数
