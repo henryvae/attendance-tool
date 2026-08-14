@@ -21,7 +21,7 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v103"
+APP_VERSION = "v102"
 import json
 import asyncio
 import threading
@@ -2554,11 +2554,10 @@ class MainWindow(QMainWindow):
             if up < standed_up and up != 0:
                 total_time += standed_up - up
             # 逐分钟统计休息时间（午饭 + 晚饭）
-            # 使用半开区间 [begin, end)：更符合时间段语义，避免跨段边界多扣/少扣
             for i in range(up, dowm):
-                if rest1_begin <= i < rest1_end:
+                if rest1_begin < i <= rest1_end:
                     total_time += 1
-                if rest2_begin <= i < rest2_end:
+                if rest2_begin < i <= rest2_end:
                     total_time += 1
             return total_time
 
