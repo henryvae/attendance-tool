@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>考勤管理工具 · UI 设计方案</title>
+<style>
+/* ═══════════════════════════════════════════
+   DESIGN TOKENS — 设计令牌
+   ═══════════════════════════════════════════ */
+:root {
+  /* 色彩系统 */
+  --primary:      #4F6BF6;
+  --primary-600:  #4358E0;
+  --primary-100:  #EDF0FE;
+  --primary-50:   #F5F7FF;
+  --ink-900:      #1A1D26;   /* 主文字 */
+  --ink-700:      #3A4050;   /* 次级文字 */
+  --ink-500:      #6B7280;   /* 辅助文字 */
+  --ink-400:      #9CA3AF;   /* 占位/禁用 */
+  --bg:           #F6F7FB;   /* 应用背景 */
+  --bg-soft:      #FBFBFE;
+  --surface:      #FFFFFF;   /* 卡片背景 */
+  --border:       #E8EAF0;
+  --border-strong:#D6DAE4;
+  --success:      #16A34A;
+  --success-bg:   #E8F7EE;
+  --warning:      #D97706;
+  --warning-bg:   #FEF3E2;
+  --danger:       #DC2626;
+  --danger-bg:    #FDEBEB;
+  --info:         #0E7490;
+  --info-bg:      #E0F2FE;
+
+  /* 圆角 */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --r-full: 999px;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px rgba(26,29,38,.05);
+  --shadow-md: 0 4px 12px rgba(26,29,38,.06), 0 1px 3px rgba(26,29,38,.05);
+  --shadow-lg: 0 12px 32px rgba(26,29,38,.12), 0 4px 8px rgba(26,29,38,.06);
+
+  /* 间距（8pt 网格） */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px;
+  --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px;
+
+  /* 字体 */
+  --font: "Inter", -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", Consolas, monospace;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--ink-900);
+  -webkit-font-smoothing: antialiased;
+  padding: 48px 24px 80px;
+}
+.page { max-width: 1120px; margin: 0 auto; }
+
+/* ═══════════════════════════════════════════
+   设计规范区块
+   ═══════════════════════════════════════════ */
+.section-title {
+  font-size: 13px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-400);
+  margin: 56px 0 20px; display:flex; align-items:center; gap:12px;
+}
+.section-title::after { content:""; flex:1; height:1px; background: var(--border); }
+.hero { text-align:center; padding: 32px 0 8px; }
+.hero .logo {
+  width: 64px; height: 64px; border-radius: 18px; margin: 0 auto 20px;
+  background: linear-gradient(135deg, #6E85FF 0%, #4F6BF6 60%, #3B4FD8 100%);
+  display:flex; align-items:center; justify-content:center;
+  box-shadow: 0 8px 24px rgba(79,107,246,.35);
+}
+.hero .logo svg { width:32px; height:32px; }
+.hero h1 { font-size: 28px; font-weight: 800; letter-spacing: -.02em; }
+.hero p { color: var(--ink-500); margin-top: 8px; font-size: 14px; }
+
+/* ── 色板 ── */
+.swatches { display:grid; grid-template-columns: repeat(auto-fill, minmax(120px,1fr)); gap: 12px; }
+.swatch { border-radius: var(--r-md); overflow:hidden; background: var(--surface); box-shadow: var(--shadow-sm); border:1px solid var(--border); }
+.swatch .chip { height: 64px; }
+.swatch .meta { padding: 8px 12px; }
+.swatch .meta b { font-size: 12px; display:block; }
+.swatch .meta span { font-size: 11px; color: var(--ink-500); font-family: var(--mono); }
+
+/* ── 排版 ── */
+.type-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: 12px; }
+.type-card { background: var(--surface); border:1px solid var(--border); border-radius: var(--r-md); padding: 16px 20px; box-shadow: var(--shadow-sm); }
+.type-card .t-label { font-size: 11px; color: var(--ink-400); font-family: var(--mono); margin-bottom: 6px; }
+
+/* ═══════════════════════════════════════════
+   界面 mockup
+   ═══════════════════════════════════════════ */
+.mockup-wrap { background: var(--surface); border:1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-md); overflow:hidden; margin-top: 8px; }
+.mockup-head {
+  display:flex; align-items:center; gap:8px; padding: 12px 16px;
+  background: var(--bg-soft); border-bottom:1px solid var(--border);
+}
+.mockup-head .dot { width:10px; height:10px; border-radius:50%; }
+.mockup-head .dot.r { background:#FF5F57; } .mockup-head .dot.y { background:#FEBC2E; } .mockup-head .dot.g { background:#28C840; }
+.mockup-head .tag { margin-left:12px; font-size:12px; color:var(--ink-500); }
+
+/* ── 登录页 ── */
+.login-stage {
+  background: linear-gradient(160deg, #EEF1FF 0%, #F6F7FB 40%, #F0F4FF 100%);
+  padding: 56px 20px; display:flex; justify-content:center; position:relative; overflow:hidden;
+}
+.login-stage::before {
+  content:""; position:absolute; width:420px; height:420px; border-radius:50%;
+  background: radial-gradient(circle, rgba(79,107,246,.14), transparent 65%);
+  top:-120px; right:-80px;
+}
+.login-card {
+  width: 380px; background: var(--surface); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg); padding: 36px 32px 32px; position:relative;
+}
+.login-card .l-logo {
+  width: 48px; height: 48px; border-radius: 14px; margin-bottom: 20px;
+  background: linear-gradient(135deg,#6E85FF,#4F6BF6 70%,#3B4FD8); display:flex;align-items:center;justify-content:center;
+  box-shadow: 0 6px 16px rgba(79,107,246,.32);
+}
+.login-card .l-logo svg { width:24px; height:24px; }
+.login-card h2 { font-size: 20px; font-weight: 800; letter-spacing:-.01em; }
+.login-card .l-sub { font-size: 13px; color: var(--ink-500); margin: 4px 0 28px; }
+
+.field { margin-bottom: 18px; }
+.field label { display:block; font-size: 12px; font-weight:600; color:var(--ink-700); margin-bottom:6px; }
+.input {
+  width:100%; height:44px; border:1.5px solid var(--border-strong); border-radius: var(--r-md);
+  padding: 0 14px; font-size:14px; font-family:var(--font); color:var(--ink-900);
+  background: var(--bg-soft); transition: all .18s ease; outline:none;
+}
+.input:focus { border-color: var(--primary); background:#fff; box-shadow: 0 0 0 4px var(--primary-100); }
+.input::placeholder { color: var(--ink-400); }
+.input-row { position:relative; }
+.input-row .eye {
+  position:absolute; right:12px; top:50%; transform:translateY(-50%);
+  color:var(--ink-400); font-size:16px; cursor:pointer; background:none; border:none;
+}
+.row-between { display:flex; align-items:center; justify-content:space-between; margin: 2px 0 22px; }
+.checkbox { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink-700); cursor:pointer; }
+.checkbox input { width:16px; height:16px; accent-color: var(--primary); }
+.link { font-size:13px; color:var(--primary); font-weight:600; text-decoration:none; }
+
+.btn {
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  height:44px; padding:0 20px; border-radius: var(--r-md); font-size:14px; font-weight:600;
+  font-family:var(--font); cursor:pointer; border:none; transition: all .18s ease;
+}
+.btn-primary { background: var(--primary); color:#fff; box-shadow: 0 4px 12px rgba(79,107,246,.3); width:100%; }
+.btn-primary:hover { background: var(--primary-600); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(79,107,246,.4); }
+.btn-primary:active { transform: translateY(0); }
+.btn-ghost { background: var(--surface); color: var(--ink-700); border:1.5px solid var(--border-strong); }
+.btn-ghost:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-50); }
+.btn-sm { height:34px; padding:0 14px; font-size:13px; border-radius: 8px; }
+.btn-danger-ghost { color: var(--danger); }
+.btn-danger-ghost:hover { border-color: var(--danger); background: var(--danger-bg); }
+
+.l-progress { height:4px; background:var(--primary-100); border-radius:99px; overflow:hidden; margin-top:16px; }
+.l-progress span { display:block; height:100%; width:62%; background:var(--primary); border-radius:99px; animation: progress 1.6s ease infinite; }
+@keyframes progress { 0%{width:18%} 60%{width:66%} 100%{width:82%} }
+.l-error {
+  display:flex; align-items:center; gap:8px; font-size:12px; color:var(--danger);
+  background:var(--danger-bg); border-radius:8px; padding:10px 12px; margin-top:14px;
+}
+
+/* ── 主界面 ── */
+.app {
+  display:flex; flex-direction:column; height: 600px; background: var(--bg);
+}
+.app-topbar {
+  display:flex; align-items:center; gap:14px; height:52px; padding:0 18px;
+  background: var(--surface); border-bottom:1px solid var(--border);
+}
+.app-topbar .a-logo { width:30px; height:30px; border-radius:9px; background:linear-gradient(135deg,#6E85FF,#4F6BF6 70%,#3B4FD8); display:flex;align-items:center;justify-content:center; }
+.app-topbar .a-logo svg { width:16px; height:16px; }
+.app-topbar .a-name { font-size:14px; font-weight:700; }
+.app-topbar .a-ver {
+  font-size:11px; font-family:var(--mono); color:var(--primary); background:var(--primary-100);
+  padding:2px 8px; border-radius:99px; font-weight:600;
+}
+.app-topbar .spacer { flex:1; }
+.app-topbar .a-user { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--ink-700); }
+.avatar {
+  width:30px; height:30px; border-radius:50%; background:linear-gradient(135deg,#6E85FF,#4F6BF6);
+  color:#fff; font-size:12px; font-weight:700; display:flex;align-items:center;justify-content:center;
+}
+.icon-btn {
+  width:34px; height:34px; border-radius:8px; border:1px solid var(--border);
+  background:var(--surface); color:var(--ink-500); display:flex;align-items:center;justify-content:center;
+  cursor:pointer; transition:all .15s ease;
+}
+.icon-btn:hover { color:var(--primary); border-color:var(--primary); background:var(--primary-50); }
+
+.app-body { flex:1; display:flex; min-height:0; }
+.app-side {
+  width: 200px; background: var(--surface); border-right:1px solid var(--border);
+  padding: 16px 10px; display:flex; flex-direction:column; gap:4px;
+}
+.nav-item {
+  display:flex; align-items:center; gap:10px; height:38px; padding:0 12px;
+  border-radius: 9px; font-size:13px; font-weight:600; color:var(--ink-500); cursor:pointer;
+  transition: all .15s ease; border:none; background:none; font-family:var(--font);
+}
+.nav-item:hover { background: var(--bg); color: var(--ink-900); }
+.nav-item.active { background: var(--primary-100); color: var(--primary); }
+.nav-item svg { width:17px; height:17px; }
+.nav-group { font-size:11px; font-weight:700; letter-spacing:.06em; color:var(--ink-400); padding: 14px 12px 6px; }
+.nav-foot { margin-top:auto; border-top:1px solid var(--border); padding-top:10px; }
+
+.app-main { flex:1; padding: 20px; overflow-y:auto; display:flex; flex-direction:column; gap:18px; min-width:0; }
+
+/* 卡片 */
+.card { background: var(--surface); border:1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-sm); }
+.card-pad { padding: 18px 20px; }
+.card-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+.card-head h3 { font-size:14px; font-weight:700; }
+.card-head .sub { font-size:12px; color:var(--ink-400); font-weight:500; }
+
+/* 指标卡 */
+.stat-grid { display:grid; grid-template-columns: repeat(4,1fr); gap:14px; }
+.stat-card { padding:18px; }
+.stat-card .s-label { font-size:12px; color:var(--ink-500); font-weight:600; display:flex; align-items:center; gap:6px; }
+.stat-card .s-value { font-size:26px; font-weight:800; letter-spacing:-.02em; margin-top:10px; font-family:var(--mono); }
+.stat-card .s-value small { font-size:13px; font-weight:600; color:var(--ink-400); margin-left:2px; }
+.stat-card .s-hint { font-size:11px; color:var(--ink-400); margin-top:6px; }
+.stat-card.accent { background: linear-gradient(135deg, #4F6BF6 0%, #6E85FF 100%); border:none; color:#fff; box-shadow: 0 8px 20px rgba(79,107,246,.3); }
+.stat-card.accent .s-label { color: rgba(255,255,255,.8); }
+.stat-card.accent .s-value { color:#fff; }
+.stat-card.accent .s-hint { color: rgba(255,255,255,.7); }
+
+/* 主区双栏 */
+.main-cols { display:grid; grid-template-columns: 1.35fr 1fr; gap:16px; align-items:start; }
+
+/* 打卡时间线 */
+.timeline { display:flex; flex-direction:column; }
+.tl-item { display:flex; align-items:center; gap:12px; padding:9px 0; border-bottom:1px dashed var(--border); }
+.tl-item:last-child { border-bottom:none; }
+.tl-item .t-time { font-family:var(--mono); font-size:15px; font-weight:700; width:56px; }
+.tl-item .t-dot { width:8px; height:8px; border-radius:50%; }
+.tl-item .t-dot.in { background:var(--success); box-shadow:0 0 0 4px var(--success-bg); }
+.tl-item .t-dot.out { background:var(--primary); box-shadow:0 0 0 4px var(--primary-100); }
+.tl-item .t-label { font-size:13px; color:var(--ink-700); }
+
+/* 详情行 */
+.detail-rows { display:flex; flex-direction:column; gap:2px; }
+.d-row { display:flex; align-items:center; justify-content:space-between; padding:7px 0; }
+.d-row .k { font-size:13px; color:var(--ink-500); }
+.d-row .v { font-size:13px; font-weight:700; color:var(--ink-900); font-family:var(--mono); }
+.d-row .v.hl { color:var(--primary); }
+.d-row .v.green { color:var(--success); }
+.d-row .v.orange { color:var(--warning); }
+
+/* 徽章 */
+.badge { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; padding:3px 9px; border-radius:99px; }
+.badge.green { background:var(--success-bg); color:var(--success); }
+.badge.orange { background:var(--warning-bg); color:var(--warning); }
+.badge.red { background:var(--danger-bg); color:var(--danger); }
+.badge.blue { background:var(--info-bg); color:var(--info); }
+.badge.gray { background:var(--bg); color:var(--ink-500); }
+
+/* 控件组 */
+.ctrl-row { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+.seg { display:inline-flex; background:var(--bg); border:1px solid var(--border); border-radius:9px; padding:3px; gap:2px; }
+.seg button {
+  border:none; background:transparent; padding:6px 14px; border-radius:7px;
+  font-size:12px; font-weight:600; color:var(--ink-500); cursor:pointer; font-family:var(--font);
+  transition:all .15s ease;
+}
+.seg button.active { background:var(--surface); color:var(--primary); box-shadow:var(--shadow-sm); }
+.select {
+  height:34px; border:1.5px solid var(--border-strong); border-radius:8px; background:var(--surface);
+  padding:0 10px; font-size:13px; font-family:var(--font); color:var(--ink-700); outline:none;
+}
+.select:focus { border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-100); }
+.label { font-size:12px; font-weight:600; color:var(--ink-700); white-space:nowrap; }
+
+/* 表格 */
+.table-wrap { border:1px solid var(--border); border-radius: var(--r-md); overflow:hidden; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+thead th {
+  background: var(--bg-soft); color:var(--ink-500); font-size:12px; font-weight:700; text-align:left;
+  padding:11px 14px; border-bottom:1px solid var(--border); white-space:nowrap;
+}
+tbody td { padding:11px 14px; border-bottom:1px solid var(--border); color:var(--ink-700); white-space:nowrap; }
+tbody tr:hover { background: var(--primary-50); }
+tbody tr:last-child td { border-bottom:none; }
+.mono { font-family:var(--mono); }
+.text-right { text-align:right; }
+.td-strong { font-weight:700; color:var(--ink-900); }
+
+/* 加班统计 */
+.ot-grid { display:grid; grid-template-columns: repeat(4,1fr); gap:12px; margin-bottom:16px; }
+.ot-mini { padding:14px 16px; }
+.ot-mini .m-label { font-size:12px; color:var(--ink-500); }
+.ot-mini .m-value { font-size:20px; font-weight:800; font-family:var(--mono); margin-top:6px; }
+.ot-mini .m-value.green { color:var(--success); }
+.ot-mini .m-value.blue { color:var(--primary); }
+.ot-mini .m-value.orange { color:var(--warning); }
+
+/* 设置表单 */
+.form-grid { display:grid; grid-template-columns: 1fr 1fr; gap:14px 18px; }
+.form-item label { display:block; font-size:12px; font-weight:600; color:var(--ink-700); margin-bottom:6px; }
+.time-pick {
+  display:flex; align-items:center; gap:6px;
+}
+.time-pick .input { width:86px; text-align:center; font-family:var(--mono); height:38px; }
+
+/* ── 弹窗 mockup（叠在主界面上）── */
+.dialog-overlay {
+  position:relative; border-radius: var(--r-lg); overflow:hidden;
+  background: rgba(26,29,38,.4); padding: 46px 20px; display:flex; justify-content:center;
+  backdrop-filter: blur(2px);
+}
+.dialog {
+  width: 360px; background: var(--surface); border-radius: var(--r-lg); box-shadow: var(--shadow-lg);
+  padding: 28px 26px 22px; text-align:center;
+}
+.dialog .d-icon {
+  width:56px; height:56px; border-radius:50%; margin:0 auto 14px;
+  background: var(--primary-100); display:flex;align-items:center;justify-content:center;
+}
+.dialog .d-icon svg { width:28px; height:28px; }
+.dialog h3 { font-size:17px; font-weight:800; }
+.dialog .d-sub { font-size:13px; color:var(--ink-500); margin-top:6px; }
+.dialog .d-out { font-size:13px; color:var(--primary); font-weight:700; margin-top:4px; font-family:var(--mono); }
+.dialog .d-auto { font-size:11px; color:var(--ink-400); margin-top:18px; }
+.dialog .btn { margin-top:14px; }
+
+/* 页脚 */
+.footer { text-align:center; color:var(--ink-400); font-size:12px; margin-top:56px; line-height:1.8; }
+
+/* 响应式 */
+@media (max-width: 900px) {
+  .stat-grid { grid-template-columns: repeat(2,1fr); }
+  .main-cols { grid-template-columns: 1fr; }
+  .app-side { display:none; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ═══════ HERO ═══════ -->
+  <div class="hero">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="3"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+        <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" stroke-width="2.6"/>
+      </svg>
+    </div>
+    <h1>考勤管理工具 · UI 设计方案</h1>
+    <p>现代简约风格 · 保留全部现有功能 · 设计系统驱动</p>
+  </div>
+
+  <!-- ═══════ 色彩系统 ═══════ -->
+  <div class="section-title">01 · 色彩系统 Color System</div>
+  <div class="swatches">
+    <div class="swatch"><div class="chip" style="background:#4F6BF6"></div><div class="meta"><b>主色 Primary</b><span>#4F6BF6</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#4358E0"></div><div class="meta"><b>主色深 Hover</b><span>#4358E0</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#EDF0FE"></div><div class="meta"><b>主色浅 100</b><span>#EDF0FE</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#1A1D26"></div><div class="meta"><b>文字主 Ink 900</b><span>#1A1D26</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#3A4050"></div><div class="meta"><b>文字次 Ink 700</b><span>#3A4050</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#6B7280"></div><div class="meta"><b>辅助 Ink 500</b><span>#6B7280</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#F6F7FB"></div><div class="meta"><b>背景 BG</b><span>#F6F7FB</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#FFFFFF"></div><div class="meta"><b>卡片 Surface</b><span>#FFFFFF</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#E8EAF0"></div><div class="meta"><b>边框 Border</b><span>#E8EAF0</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#16A34A"></div><div class="meta"><b>成功 Success</b><span>#16A34A</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#D97706"></div><div class="meta"><b>警告 Warning</b><span>#D97706</span></div></div>
+    <div class="swatch"><div class="chip" style="background:#DC2626"></div><div class="meta"><b>危险 Danger</b><span>#DC2626</span></div></div>
+  </div>
+
+  <!-- ═══════ 排版 ═══════ -->
+  <div class="section-title">02 · 排版系统 Typography</div>
+  <div class="type-grid">
+    <div class="type-card"><div class="t-label">Display / 26px / 800</div><div style="font-size:26px;font-weight:800">今日应下班 18:07</div></div>
+    <div class="type-card"><div class="t-label">Title / 17px / 800</div><div style="font-size:17px;font-weight:800">下班提醒</div></div>
+    <div class="type-card"><div class="t-label">Heading / 14px / 700</div><div style="font-size:14px;font-weight:700">今日考勤详情</div></div>
+    <div class="type-card"><div class="t-label">Body / 13px / 400-600</div><div style="font-size:13px;color:var(--ink-700)">打卡记录 · 应下班时间 · 已工作时长</div></div>
+    <div class="type-card"><div class="t-label">Caption / 12px / 500</div><div style="font-size:12px;color:var(--ink-500)">刷新倒计时 · 状态栏辅助信息</div></div>
+    <div class="type-card"><div class="t-label">Mono / 数字等宽</div><div style="font-family:var(--mono);font-size:13px;color:var(--primary)">18:07 · 08:04 · 02:15</div></div>
+  </div>
+
+  <!-- ═══════ 登录页 ═══════ -->
+  <div class="section-title">03 · 登录界面 Login</div>
+  <div class="mockup-wrap">
+    <div class="mockup-head">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="tag">考勤管理系统 · 登录</span>
+    </div>
+    <div class="login-stage">
+      <div class="login-card">
+        <div class="l-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="3"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+            <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" stroke-width="2.6"/>
+          </svg>
+        </div>
+        <h2>欢迎回来</h2>
+        <p class="l-sub">登录 UMS 系统查看你的考勤</p>
+        <div class="field">
+          <label>工号 / 用户名</label>
+          <input class="input" placeholder="请输入工号" value="A10086">
+        </div>
+        <div class="field">
+          <label>密码</label>
+          <div class="input-row">
+            <input class="input" type="password" placeholder="请输入密码" value="••••••••">
+            <button class="eye">👁</button>
+          </div>
+        </div>
+        <div class="row-between">
+          <label class="checkbox"><input type="checkbox" checked> 记住账号 <input type="checkbox"> 记住密码</label>
+          <a class="link" href="#">忘记密码？</a>
+        </div>
+        <button class="btn btn-primary">登 录</button>
+        <div class="l-progress"><span></span></div>
+        <div class="l-error">⚠ 登录失败，工号或密码错误，请重试</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ 主界面 ═══════ -->
+  <div class="section-title">04 · 主界面 Main Window</div>
+  <div class="mockup-wrap">
+    <div class="mockup-head">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="tag">考勤管理 · A10086 — 概览视图</span>
+    </div>
+
+    <div class="app">
+      <!-- 顶栏 -->
+      <div class="app-topbar">
+        <div class="a-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="3"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+        </div>
+        <span class="a-name">考勤管理</span>
+        <span class="a-ver">v104</span>
+        <div class="spacer"></div>
+        <div class="a-user"><div class="avatar">A</div> 张伟</div>
+        <div class="ctrl-row" style="margin:0;gap:8px">
+          <button class="icon-btn" title="设置">⚙</button>
+          <button class="icon-btn" title="导出 CSV">↓</button>
+          <button class="icon-btn btn-danger-ghost" title="退出">⏻</button>
+        </div>
+      </div>
+
+      <div class="app-body">
+        <!-- 侧边导航 -->
+        <div class="app-side">
+          <div class="nav-group">视图</div>
+          <button class="nav-item active">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+            今日概览
+          </button>
+          <button class="nav-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="14" y2="14"/></svg>
+            考勤记录
+          </button>
+          <button class="nav-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-6"/></svg>
+            加班统计
+          </button>
+          <div class="nav-group">系统</div>
+          <button class="nav-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            系统设置
+          </button>
+          <div class="nav-foot">
+            <button class="nav-item" style="color:var(--danger)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              退出登录
+            </button>
+          </div>
+        </div>
+
+        <!-- 主内容 -->
+        <div class="app-main">
+          <!-- 控制行 -->
+          <div class="ctrl-row">
+            <div class="seg">
+              <button class="active">本月</button>
+              <button>上月</button>
+            </div>
+            <select class="select">
+              <option>2026/08/14 周五</option>
+              <option>2026/08/13 周四</option>
+              <option>2026/08/12 周三</option>
+            </select>
+            <span class="label" style="margin-left:6px">加班设置</span>
+            <select class="select" style="width:64px"><option>2</option></select>
+            <span class="label">时</span>
+            <select class="select" style="width:70px"><option>15</option></select>
+            <span class="label">分</span>
+            <div class="spacer" style="flex:1"></div>
+            <span class="label" style="color:var(--ink-400)">自动刷新</span>
+            <span class="mono" style="font-size:13px;font-weight:700">03:27</span>
+            <button class="btn btn-ghost btn-sm">⟳ 刷新</button>
+          </div>
+
+          <!-- 指标卡 -->
+          <div class="stat-grid">
+            <div class="card stat-card accent">
+              <div class="s-label">今日应下班</div>
+              <div class="s-value">18:07</div>
+              <div class="s-hint">预计下班时间</div>
+            </div>
+            <div class="card stat-card">
+              <div class="s-label">已工作时长</div>
+              <div class="s-value">8<small>时</small> 48<small>分</small></div>
+              <div class="s-hint">打卡 07:46 起</div>
+            </div>
+            <div class="card stat-card">
+              <div class="s-label">已加班时长</div>
+              <div class="s-value">2<small>时</small> 15<small>分</small></div>
+              <div class="s-hint"><span class="badge orange">加班中</span></div>
+            </div>
+            <div class="card stat-card">
+              <div class="s-label">本月累计加班</div>
+              <div class="s-value">28<small>时</small> 30<small>分</small></div>
+              <div class="s-hint"><span class="badge blue">平 20h</span> <span class="badge green">周 8h</span> <span class="badge gray">假 0.5h</span></div>
+            </div>
+          </div>
+
+          <!-- 双栏：今日详情 + 打卡 -->
+          <div class="main-cols">
+            <!-- 左：今日考勤详情 -->
+            <div class="card card-pad">
+              <div class="card-head">
+                <h3>今日考勤详情</h3>
+                <div>
+                  <span class="badge red" style="margin-right:6px">迟到 ×2</span>
+                  <span class="badge orange">早退 ×1</span>
+                </div>
+              </div>
+              <div class="detail-rows">
+                <div class="d-row"><span class="k">打卡记录</span><span class="v" style="color:var(--ink-700);font-weight:600">07:46 · 17:15 · 17:56 · 20:01</span></div>
+                <div class="d-row"><span class="k">应下班时间</span><span class="v hl">18:07</span></div>
+                <div class="d-row"><span class="k">已工作时长</span><span class="v green">08时48分</span></div>
+                <div class="d-row"><span class="k">已加班时长</span><span class="v orange">02时15分</span></div>
+                <div class="d-row"><span class="k">平加 (工作日)</span><span class="v">20.0 h</span></div>
+                <div class="d-row"><span class="k">周加 (周末)</span><span class="v">8.0 h</span></div>
+                <div class="d-row"><span class="k">假加 (节假日)</span><span class="v">0.5 h</span></div>
+                <div class="d-row"><span class="k">合计加班</span><span class="v hl">28.5 h</span></div>
+              </div>
+            </div>
+
+            <!-- 右：打卡时间线 + 提醒设置 -->
+            <div class="card card-pad">
+              <div class="card-head"><h3>打卡时间线</h3><span class="badge gray">4 次打卡</span></div>
+              <div class="timeline">
+                <div class="tl-item"><span class="t-dot in"></span><span class="t-time">07:46</span><span class="t-label">上班打卡</span></div>
+                <div class="tl-item"><span class="t-dot in"></span><span class="t-time">17:15</span><span class="t-label">晚休开始</span></div>
+                <div class="tl-item"><span class="t-dot out"></span><span class="t-time">17:56</span><span class="t-label">晚休结束 · 加班</span></div>
+                <div class="tl-item"><span class="t-dot out"></span><span class="t-time">20:01</span><span class="t-label">下班打卡</span></div>
+              </div>
+              <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
+                <div class="ctrl-row" style="margin:0">
+                  <span class="label">🔔 下班提醒</span>
+                  <input type="checkbox" checked style="accent-color:var(--primary)">
+                  <select class="select" style="width:64px"><option>5</option></select>
+                  <span class="label" style="color:var(--ink-400)">分钟前</span>
+                  <button class="icon-btn" title="测试提醒" style="margin-left:auto">▶</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ 考勤记录视图 ═══════ -->
+  <div class="section-title">05 · 考勤记录视图 Records</div>
+  <div class="mockup-wrap">
+    <div class="mockup-head">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="tag">考勤管理 · A10086 — 考勤记录</span>
+    </div>
+    <div style="background:var(--bg);padding:20px">
+      <div class="card card-pad" style="margin-bottom:14px">
+        <div class="ctrl-row" style="margin:0">
+          <div class="seg"><button class="active">本月</button><button>上月</button></div>
+          <select class="select"><option>全部日期</option></select>
+          <div class="spacer" style="flex:1"></div>
+          <span class="label">迟到 <b style="color:var(--danger)">2</b></span>
+          <span class="label">早退 <b style="color:var(--warning)">1</b></span>
+          <span class="label">缺勤 <b style="color:var(--danger)">0</b></span>
+        </div>
+      </div>
+      <div class="card" style="overflow:hidden">
+        <div class="table-wrap" style="border:none;border-radius:0">
+          <table>
+            <thead><tr><th>日期</th><th>星期</th><th>打卡记录</th><th>应下班</th><th>工作时长</th><th>加班</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td class="td-strong mono">08/14</td><td>周五</td><td class="mono">07:46 17:15 17:56 20:01</td><td class="mono">18:07</td><td class="mono">08:48</td><td class="mono" style="color:var(--warning)">02:15</td><td><span class="badge orange">加班</span></td></tr>
+              <tr><td class="td-strong mono">08/13</td><td>周四</td><td class="mono">08:04 17:15 18:03</td><td class="mono">18:07</td><td class="mono">08:07</td><td class="mono">00:00</td><td><span class="badge green">正常</span></td></tr>
+              <tr><td class="td-strong mono">08/12</td><td>周三</td><td class="mono">07:58 12:00 13:00 17:15 18:00</td><td class="mono">17:15</td><td class="mono">08:00</td><td class="mono">00:00</td><td><span class="badge green">正常</span></td></tr>
+              <tr><td class="td-strong mono">08/11</td><td>周二</td><td class="mono">08:20 12:00 13:00 17:15 18:00</td><td class="mono">17:15</td><td class="mono">07:40</td><td class="mono">00:00</td><td><span class="badge red">迟到</span></td></tr>
+              <tr><td class="td-strong mono">08/10</td><td>周一</td><td class="mono">07:50 12:00 13:00 17:15 18:00</td><td class="mono">17:15</td><td class="mono">08:00</td><td class="mono">00:00</td><td><span class="badge green">正常</span></td></tr>
+              <tr><td class="td-strong mono">08/09</td><td>周日</td><td class="mono" style="color:var(--ink-400)">— 休息日 —</td><td class="mono">—</td><td class="mono">—</td><td class="mono">—</td><td><span class="badge gray">休息</span></td></tr>
+              <tr><td class="td-strong mono">08/08</td><td>周六</td><td class="mono">08:10 12:00 13:00 15:10</td><td class="mono">15:10</td><td class="mono">07:00</td><td class="mono">00:00</td><td><span class="badge blue">小周</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;color:var(--ink-400);font-size:12px">
+        <span>共 31 条记录</span>
+        <button class="btn btn-ghost btn-sm">📥 导出 CSV</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ 加班统计视图 ═══════ -->
+  <div class="section-title">06 · 加班统计视图 Overtime</div>
+  <div class="mockup-wrap">
+    <div class="mockup-head">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="tag">考勤管理 · A10086 — 加班统计</span>
+    </div>
+    <div style="background:var(--bg);padding:20px">
+      <div class="ot-grid">
+        <div class="card ot-mini"><div class="m-label">平加（工作日）</div><div class="m-value blue">20.0 h</div></div>
+        <div class="card ot-mini"><div class="m-label">周加（周末）</div><div class="m-value green">8.0 h</div></div>
+        <div class="card ot-mini"><div class="m-label">假加（节假日）</div><div class="m-value orange">0.5 h</div></div>
+        <div class="card ot-mini" style="background:var(--primary-100);border-color:var(--primary)"><div class="m-label">本月合计</div><div class="m-value" style="color:var(--primary)">28.5 h</div></div>
+      </div>
+      <div class="card card-pad">
+        <div class="card-head"><h3>每日加班明细</h3><span class="badge gray">本月累计 28.5h</span></div>
+        <div class="table-wrap" style="border:none;border-radius:var(--r-md);border:1px solid var(--border)">
+          <table>
+            <thead><tr><th>日期</th><th>类型</th><th>加班时长</th><th>备注</th></tr></thead>
+            <tbody>
+              <tr><td class="td-strong mono">08/14</td><td><span class="badge orange">平日加班</span></td><td class="mono">02:15</td><td class="text-right" style="color:var(--ink-400)">—</td></tr>
+              <tr><td class="td-strong mono">08/13</td><td><span class="badge orange">平日加班</span></td><td class="mono">01:30</td><td class="text-right" style="color:var(--ink-400)">—</td></tr>
+              <tr><td class="td-strong mono">08/08</td><td><span class="badge green">周末加班</span></td><td class="mono">08:00</td><td class="text-right" style="color:var(--ink-400)">小周周六</td></tr>
+              <tr><td class="td-strong mono">08/01</td><td><span class="badge gray">节假日加班</span></td><td class="mono">00:30</td><td class="text-right" style="color:var(--ink-400)">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ 系统设置视图 ═══════ -->
+  <div class="section-title">07 · 系统设置视图 Settings</div>
+  <div class="mockup-wrap">
+    <div class="mockup-head">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="tag">考勤管理 · A10086 — 系统设置</span>
+    </div>
+    <div style="background:var(--bg);padding:20px">
+      <div class="card card-pad" style="max-width:640px;margin:0 auto">
+        <div class="card-head"><h3>上下班时间配置</h3><span class="sub">保存后立即生效</span></div>
+        <div class="form-grid">
+          <div class="form-item">
+            <label>最早上班</label>
+            <div class="time-pick"><input class="input" value="07:00"><span class="label" style="color:var(--ink-400)">提前打卡计入工时</span></div>
+          </div>
+          <div class="form-item">
+            <label>最晚上班</label>
+            <div class="time-pick"><input class="input" value="18:00"></div>
+          </div>
+          <div class="form-item">
+            <label>午休开始</label>
+            <div class="time-pick"><input class="input" value="12:00"></div>
+          </div>
+          <div class="form-item">
+            <label>午休结束</label>
+            <div class="time-pick"><input class="input" value="13:15"></div>
+          </div>
+          <div class="form-item">
+            <label>晚休开始</label>
+            <div class="time-pick"><input class="input" value="17:15"></div>
+          </div>
+          <div class="form-item">
+            <label>晚休结束</label>
+            <div class="time-pick"><input class="input" value="18:00"></div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:24px;border-top:1px solid var(--border);padding-top:18px">
+          <button class="btn btn-ghost btn-sm" style="height:38px">取消</button>
+          <button class="btn btn-primary btn-sm" style="height:38px;width:auto;padding:0 24px">保存配置</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ 弹窗 ═══════ -->
+  <div class="section-title">08 · 弹窗组件 Dialogs</div>
+  <div class="dialog-overlay">
+    <div class="dialog">
+      <div class="d-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#4F6BF6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>
+      </div>
+      <h3>已到下班时间</h3>
+      <p class="d-sub">辛苦啦，今天的工作已完成！</p>
+      <p class="d-out">预计下班 18:07 · 已加班 02:15</p>
+      <p class="d-auto">30 秒后自动关闭</p>
+      <button class="btn btn-primary" style="width:100%;height:40px">知道了</button>
+    </div>
+  </div>
+
+  <div class="footer">
+    UI Designer 设计稿 · 考勤管理工具 v104 界面升级方案<br>
+    保留全部现有功能：登录 / 本月上月切换 / 日期选择 / 加班设置 / 下班提醒 / 迟到早退统计 / 刷新倒计时 / 导出 CSV / 上下班配置 / 大小周逻辑
+  </div>
+
+</div>
+</body>
+</html>

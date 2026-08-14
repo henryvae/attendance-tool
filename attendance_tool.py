@@ -21,13 +21,13 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v104"
+APP_VERSION = "v105"
 import json
 import asyncio
 import threading
 
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem,
     QDateEdit, QGroupBox, QMessageBox, QStatusBar, QFrame,
     QHeaderView, QComboBox, QProgressBar,
@@ -60,19 +60,19 @@ def _find_edge():
 EDGE_PATH = _find_edge()
 
 THEME = {
-    "primary":    "#1976D2",
-    "primary_dk": "#1565C0",
-    "accent":     "#42A5F5",
-    "bg":         "#F5F7FA",
+    "primary":    "#4F6BF6",
+    "primary_dk": "#4358E0",
+    "accent":     "#6E85FF",
+    "bg":         "#F6F7FB",
     "card":       "#FFFFFF",
-    "text":       "#212121",
-    "text_sec":   "#757575",
-    "border":     "#E0E0E0",
-    "success":    "#4CAF50",
-    "warning":    "#FF9800",
-    "danger":     "#F44336",
-    "header_bg":  "#1976D2",
-    "row_alt":    "#EEF2F8",
+    "text":       "#1A1D26",
+    "text_sec":   "#6B7280",
+    "border":     "#E8EAF0",
+    "success":    "#16A34A",
+    "warning":    "#D97706",
+    "danger":     "#DC2626",
+    "header_bg":  "#4F6BF6",
+    "row_alt":    "#F6F7FB",
 }
 
 
@@ -733,6 +733,316 @@ QProgressBar {{
 QProgressBar::chunk {{ background: {THEME['primary']}; border-radius: 4px; }}
 """
 
+# ─────────────────────────────────────────────
+#  现代简约主题（全局 QSS，与 UI设计方案.html / theme_modern.qss 一致）
+# ─────────────────────────────────────────────
+STYLE_MODERN = """
+/* ═══════════════════════════════════════════
+   考勤管理工具 · 现代简约主题
+   主色 #4F6BF6   背景 #F6F7FB   卡片 #FFFFFF
+   ═══════════════════════════════════════════ */
+QWidget {
+    font-family: "Microsoft YaHei UI", "Segoe UI", "PingFang SC", sans-serif;
+    font-size: 13px;
+    color: #1A1D26;
+}
+QMainWindow, QDialog { background: #F6F7FB; }
+#centralRoot { background: #F6F7FB; }
+
+/* ── 卡片容器 ── */
+QFrame#card, QGroupBox {
+    background: #FFFFFF;
+    border: 1px solid #E8EAF0;
+    border-radius: 12px;
+}
+QFrame#card:hover { border-color: #D6DAE4; }
+
+/* ── 顶栏 ── */
+#topBar {
+    background: #FFFFFF;
+    border: none;
+    border-bottom: 1px solid #E8EAF0;
+}
+#topBar QLabel { color: #1A1D26; background: transparent; }
+#appLogo { font-size: 20px; font-weight: 700; color: #4F6BF6; }
+#appTitle { font-size: 14px; font-weight: 700; }
+#versionBadge {
+    color: #4F6BF6;
+    background: #EDF0FE;
+    border-radius: 9px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+}
+#userName { font-size: 13px; font-weight: 600; color: #3A4050; }
+
+/* ── 头像 ── */
+#avatar {
+    background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #6E85FF, stop:1 #4F6BF6);
+    border-radius: 20px;
+    color: #FFFFFF;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+/* ── 分组标题 / 详情行 ── */
+#sectionTitle { font-size: 13px; font-weight: 700; color: #1A1D26; }
+#detailKey { font-size: 13px; color: #6B7280; }
+#detailVal { font-size: 13px; font-weight: 700; color: #1A1D26; }
+#detailValMono {
+    font-family: "JetBrains Mono", "Consolas", monospace;
+    font-size: 13px; font-weight: 700; color: #1A1D26;
+}
+
+/* ── 指标卡 ── */
+#metricCard {
+    background: #FFFFFF;
+    border: 1px solid #E8EAF0;
+    border-radius: 12px;
+}
+#metricCard:hover { border-color: #D6DAE4; }
+#metricTitle { font-size: 12px; color: #6B7280; font-weight: 600; }
+#metricValue {
+    font-family: "JetBrains Mono", "Consolas", monospace;
+    font-size: 20px; font-weight: 800; color: #1A1D26;
+}
+#metricValuePrimary {
+    font-family: "JetBrains Mono", "Consolas", monospace;
+    font-size: 20px; font-weight: 800; color: #4F6BF6;
+}
+#metricValueWarning {
+    font-family: "JetBrains Mono", "Consolas", monospace;
+    font-size: 20px; font-weight: 800; color: #D97706;
+}
+#metricValueSuccess {
+    font-family: "JetBrains Mono", "Consolas", monospace;
+    font-size: 20px; font-weight: 800; color: #16A34A;
+}
+#metricValueDanger {
+    font-family: "JetBrains Mono", "Consolas", monospace;
+    font-size: 20px; font-weight: 800; color: #DC2626;
+}
+
+/* ── 输入框 ── */
+QLineEdit, QSpinBox, QComboBox, QDateEdit, QTimeEdit {
+    background: #FBFBFE;
+    border: 1.5px solid #D6DAE4;
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-size: 13px;
+    color: #1A1D26;
+    selection-background-color: #4F6BF6;
+    selection-color: #FFFFFF;
+}
+QLineEdit:hover, QSpinBox:hover, QComboBox:hover, QDateEdit:hover, QTimeEdit:hover {
+    border-color: #9CA3AF;
+}
+QLineEdit:focus, QSpinBox:focus, QComboBox:focus, QDateEdit:focus, QTimeEdit:focus {
+    border-color: #4F6BF6;
+    background: #FFFFFF;
+}
+QLineEdit:disabled { background: #F6F7FB; color: #9CA3AF; }
+
+/* ── 下拉列表 ── */
+QComboBox::drop-down { width: 24px; border: none; }
+QComboBox::down-arrow {
+    image: none;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid #6B7280;
+    margin-right: 8px;
+}
+QComboBox QAbstractItemView {
+    background: #FFFFFF;
+    border: 1px solid #E8EAF0;
+    border-radius: 8px;
+    outline: none;
+    selection-background-color: #EDF0FE;
+    selection-color: #4F6BF6;
+    padding: 4px;
+}
+QComboBox QAbstractItemView::item {
+    min-height: 28px;
+    padding: 4px 10px;
+    border-radius: 6px;
+}
+QComboBox QAbstractItemView::item:hover {
+    background: #EDF0FE;
+    color: #4F6BF6;
+}
+
+/* ── 按钮 ── */
+QPushButton {
+    background: #FFFFFF;
+    color: #3A4050;
+    border: 1.5px solid #D6DAE4;
+    border-radius: 8px;
+    padding: 7px 16px;
+    font-size: 13px;
+    font-weight: 600;
+}
+QPushButton:hover { border-color: #4F6BF6; color: #4F6BF6; background: #F5F7FF; }
+QPushButton:pressed { background: #EDF0FE; }
+QPushButton:disabled { color: #9CA3AF; border-color: #E8EAF0; background: #F6F7FB; }
+
+/* 主按钮 */
+QPushButton#btnPrimary {
+    background: #4F6BF6;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    padding: 9px 20px;
+}
+QPushButton#btnPrimary:hover { background: #4358E0; }
+QPushButton#btnPrimary:pressed { background: #3B4FD8; }
+QPushButton#btnPrimary:disabled { background: #A5B4FB; color: #FFFFFF; }
+
+/* 危险按钮 */
+QPushButton#btnDanger { color: #DC2626; border-color: #F3C1C1; background: #FFFFFF; }
+QPushButton#btnDanger:hover { background: #FDEBEB; border-color: #DC2626; }
+
+/* 图标按钮 */
+QPushButton#iconBtn {
+    background: #FFFFFF;
+    border: 1px solid #E8EAF0;
+    border-radius: 8px;
+    padding: 0;
+    min-width: 32px; max-width: 32px;
+    min-height: 32px; max-height: 32px;
+    font-size: 14px;
+    color: #6B7280;
+}
+QPushButton#iconBtn:hover { color: #4F6BF6; border-color: #4F6BF6; background: #F5F7FF; }
+
+/* ── 进度条 ── */
+QProgressBar {
+    background: #EDF0FE;
+    border: none;
+    border-radius: 4px;
+    text-align: center;
+    color: transparent;
+}
+QProgressBar::chunk {
+    background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #6E85FF, stop:1 #4F6BF6);
+    border-radius: 4px;
+}
+
+/* ── 复选框 / 单选 ── */
+QCheckBox { spacing: 8px; color: #3A4050; font-size: 13px; }
+QCheckBox::indicator {
+    width: 18px; height: 18px; border-radius: 5px;
+    border: 1.5px solid #D6DAE4; background: #FFFFFF;
+}
+QCheckBox::indicator:hover { border-color: #4F6BF6; }
+QCheckBox::indicator:checked { background: #4F6BF6; border-color: #4F6BF6; }
+QRadioButton { spacing: 8px; color: #3A4050; font-size: 13px; }
+QRadioButton::indicator {
+    width: 16px; height: 16px; border-radius: 9px;
+    border: 1.5px solid #D6DAE4; background: #FFFFFF;
+}
+QRadioButton::indicator:hover { border-color: #4F6BF6; }
+QRadioButton::indicator:checked { background: #4F6BF6; border-color: #4F6BF6; }
+
+/* ── 标签 ── */
+QLabel { background: transparent; color: #3A4050; }
+QLabel#h1 { font-size: 26px; font-weight: 800; color: #1A1D26; }
+QLabel#h3 { font-size: 14px; font-weight: 700; color: #1A1D26; }
+QLabel#caption { font-size: 12px; color: #9CA3AF; }
+QLabel#valueMono {
+    font-family: "JetBrains Mono", "Consolas", monospace;
+    font-weight: 700; color: #1A1D26;
+}
+QLabel#valuePrimary {
+    font-family: "JetBrains Mono", "Consolas", monospace;
+    font-weight: 700; color: #4F6BF6;
+}
+QLabel#valueSuccess { color: #16A34A; font-weight: 700; }
+QLabel#valueWarning { color: #D97706; font-weight: 700; }
+QLabel#valueDanger { color: #DC2626; font-weight: 700; }
+
+/* ── 分割线 ── */
+QFrame#hsep { background: #E8EAF0; max-height: 1px; border: none; }
+
+/* ── 状态栏 ── */
+#statusBar {
+    background: #F6F7FB;
+    border-top: 1px solid #E8EAF0;
+    color: #6B7280;
+    font-size: 12px;
+    padding: 6px 10px;
+}
+
+/* ── 表格 ── */
+QTableWidget {
+    background: #FFFFFF;
+    border: 1px solid #E8EAF0;
+    border-radius: 10px;
+    gridline-color: #F0F1F5;
+    alternate-background-color: #FAFAFD;
+    selection-background-color: #EDF0FE;
+    selection-color: #1A1D26;
+    font-size: 13px;
+}
+QTableWidget::item { padding: 6px 10px; border: none; }
+QTableWidget::item:hover { background: #F5F7FF; }
+QHeaderView::section {
+    background: #FBFBFE;
+    color: #6B7280;
+    font-weight: 700;
+    font-size: 12px;
+    padding: 9px 10px;
+    border: none;
+    border-bottom: 1px solid #E8EAF0;
+}
+QTableCornerButton::section { background: #FBFBFE; border: none; border-bottom: 1px solid #E8EAF0; }
+
+/* ── 滚动条 ── */
+QScrollBar:vertical { background: transparent; width: 10px; margin: 2px; }
+QScrollBar::handle:vertical { background: #D6DAE4; border-radius: 5px; min-height: 30px; }
+QScrollBar::handle:vertical:hover { background: #9CA3AF; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QScrollBar:horizontal { background: transparent; height: 10px; margin: 2px; }
+QScrollBar::handle:horizontal { background: #D6DAE4; border-radius: 5px; min-width: 30px; }
+QScrollBar::handle:horizontal:hover { background: #9CA3AF; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
+
+/* ── 弹窗 / 提示 ── */
+QMessageBox { background: #FFFFFF; }
+QMessageBox QLabel { font-size: 13px; color: #1A1D26; }
+QMessageBox QPushButton { min-width: 76px; min-height: 32px; }
+QToolTip {
+    background: #1A1D26;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+}
+QMenu {
+    background: #FFFFFF;
+    border: 1px solid #E8EAF0;
+    border-radius: 10px;
+    padding: 6px;
+}
+QMenu::item { padding: 7px 26px 7px 14px; border-radius: 6px; color: #3A4050; font-size: 13px; }
+QMenu::item:selected { background: #EDF0FE; color: #4F6BF6; }
+QMenu::separator { height: 1px; background: #E8EAF0; margin: 4px 8px; }
+
+/* ── 下班提醒弹窗 ── */
+#remindDialog { background: #FFFFFF; border-radius: 14px; }
+#remindIcon { font-size: 30px; }
+#remindTitle { font-size: 17px; font-weight: 800; color: #1A1D26; }
+#remindSub { font-size: 13px; color: #6B7280; }
+#remindOut {
+    font-size: 13px;
+    color: #4F6BF6;
+    font-weight: 700;
+    font-family: "JetBrains Mono", "Consolas", monospace;
+}
+#remindAuto { font-size: 11px; color: #9CA3AF; }
+"""
+
 STYLE_LOGIN = f"""
 QWidget {{
     background-color: {THEME['bg']};
@@ -1055,8 +1365,8 @@ class LoginWindow(QWidget):
         self.progress.setFixedHeight(4)
         self.progress.setFixedWidth(300)
         self.progress.setStyleSheet(
-            "QProgressBar{border:none;background:#E3F2FD;border-radius:2px;}"
-            "QProgressBar::chunk{background:#1976D2;border-radius:2px;}"
+            "QProgressBar{border:none;background:#EDF0FE;border-radius:2px;}"
+            "QProgressBar::chunk{background:#4F6BF6;border-radius:2px;}"
         )
         rpr.addWidget(self.progress)
         add_row(body_layout, r_prog)
@@ -1277,13 +1587,12 @@ class ConfigWindow(QWidget):
         btn_row = QHBoxLayout()
         btn_cancel = QPushButton("取消")
         btn_cancel.setFixedHeight(40)
-        btn_cancel.setStyleSheet(f"QPushButton {{ background: white; color: {THEME['text']}; border: 1.5px solid {THEME['border']}; border-radius: 6px; font-size: 14px; padding: 0 20px; }} QPushButton:hover {{ background: #F5F5F5; }}")
         btn_cancel.clicked.connect(self.close)
         btn_row.addWidget(btn_cancel)
 
         btn_save = QPushButton("保存配置")
+        btn_save.setObjectName("btnPrimary")
         btn_save.setFixedHeight(40)
-        btn_save.setStyleSheet(f"QPushButton {{ background: {THEME['primary']}; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; padding: 0 20px; }} QPushButton:hover {{ background: {THEME['accent']}; }}")
         btn_save.clicked.connect(self._on_save)
         btn_row.addWidget(btn_save)
 
@@ -1325,6 +1634,7 @@ class OffWorkRemindDialog(QDialog):
     def __init__(self, remain_txt: str, should_out_str: str, is_arrived: bool = False, parent=None):
         super().__init__(parent)
         self.setWindowTitle("下班提醒")
+        self.setObjectName("remindDialog")
         self.setFixedSize(360, 240)
         self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         self._auto_close_remain = 30  # 自动关闭倒计时（秒）
@@ -1343,55 +1653,41 @@ class OffWorkRemindDialog(QDialog):
 
         # 图标
         lbl_icon = QLabel("🏠")
+        lbl_icon.setObjectName("remindIcon")
         lbl_icon.setAlignment(Qt.AlignCenter)
-        lbl_icon.setStyleSheet("font-size: 32px;")
         vb.addWidget(lbl_icon)
 
         # 标题：区分"已到下班时间"和"下班提醒"
+        lbl_title = QLabel("已到下班时间" if is_arrived else "下班提醒")
+        lbl_title.setObjectName("remindTitle")
         if is_arrived:
-            lbl_title = QLabel("已到下班时间")
-            lbl_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #1976D2;")
-        else:
-            lbl_title = QLabel("下班提醒")
-            lbl_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #333;")
+            lbl_title.setStyleSheet("color: #4F6BF6;")  # 已到时高亮主色
         lbl_title.setAlignment(Qt.AlignCenter)
         vb.addWidget(lbl_title)
 
         # 还有多久（已到时不显示）
         if not is_arrived:
             lbl_remain = QLabel(f"还有 {remain_txt} 就要下班啦！")
+            lbl_remain.setObjectName("remindSub")
             lbl_remain.setAlignment(Qt.AlignCenter)
-            lbl_remain.setStyleSheet("font-size: 13px; color: #666;")
             vb.addWidget(lbl_remain)
 
         # 应下班时间
         lbl_out = QLabel(f"预计下班 {should_out_str}")
+        lbl_out.setObjectName("remindOut")
         lbl_out.setAlignment(Qt.AlignCenter)
-        lbl_out.setStyleSheet("font-size: 12px; color: #999;")
         vb.addWidget(lbl_out)
 
         # 自动关闭倒计时
         self._lbl_auto = QLabel(f"{self._auto_close_remain} 秒后自动关闭")
+        self._lbl_auto.setObjectName("remindAuto")
         self._lbl_auto.setAlignment(Qt.AlignCenter)
-        self._lbl_auto.setStyleSheet("font-size: 11px; color: #aaa;")
         vb.addWidget(self._lbl_auto)
 
         # 知道了按钮
         btn_ok = QPushButton("知道了")
+        btn_ok.setObjectName("btnPrimary")
         btn_ok.setFixedHeight(36)
-        btn_ok.setStyleSheet("""
-            QPushButton {
-                background: #6B5BFF;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background: #5A4AE0;
-            }
-        """)
         btn_ok.clicked.connect(self.close)
         vb.addWidget(btn_ok)
 
@@ -1439,8 +1735,8 @@ class MainWindow(QMainWindow):
         self._today_should_out_min = None  # 今日应下班时间（分钟），_update_stats 计算后写入
 
         self.setWindowTitle(f"考勤管理  ·  {username}")
-        self.resize(780, 420)
-        self.setMinimumSize(680, 380)
+        self.resize(940, 580)
+        self.setMinimumSize(840, 480)
 
         self._init_tray()
         self.setWindowIcon(self._make_letter_icon(64))  # 任务栏窗口图标（初始字母占位）
@@ -1458,23 +1754,88 @@ class MainWindow(QMainWindow):
 
     def _setup_ui(self):
         central = QWidget()
+        central.setObjectName("centralRoot")
         self.setCentralWidget(central)
 
-        # ── 背景渐变（绿色自然风格，模仿截图）
-        central.setStyleSheet("""
-            QWidget#bg {
-                background: qlineargradient(x1:0,y1:0,x2:1,y2:1,
-                    stop:0 #5a8a4a, stop:0.4 #6fa055, stop:0.7 #4e7a3e, stop:1 #3d6030);
-            }
-        """)
-        central.setObjectName("bg")
+        root_vb = QVBoxLayout(central)
+        root_vb.setContentsMargins(0, 0, 0, 0)
+        root_vb.setSpacing(0)
 
-        root = QHBoxLayout(central)
-        root.setContentsMargins(12, 12, 12, 12)
-        root.setSpacing(10)
+        # ─────────────────────────────────────
+        #  顶栏：Logo + 标题 + 版本 | 头像 + 用户名 + 操作按钮
+        # ─────────────────────────────────────
+        top_bar = QFrame()
+        top_bar.setObjectName("topBar")
+        top_bar.setFixedHeight(54)
+        tb = QHBoxLayout(top_bar)
+        tb.setContentsMargins(16, 0, 16, 0)
+        tb.setSpacing(10)
 
-        root.addWidget(self._build_left_panel(), stretch=0)
-        root.addWidget(self._build_right_panel(), stretch=1)
+        lbl_logo = QLabel("⏱")
+        lbl_logo.setObjectName("appLogo")
+        lbl_logo.setAlignment(Qt.AlignCenter)
+        tb.addWidget(lbl_logo)
+
+        lbl_app = QLabel("考勤管理")
+        lbl_app.setObjectName("appTitle")
+        tb.addWidget(lbl_app)
+
+        lbl_ver = QLabel(APP_VERSION)
+        lbl_ver.setObjectName("versionBadge")
+        tb.addWidget(lbl_ver)
+
+        tb.addStretch()
+
+        # 头像（初始显示工号首字符占位）
+        self._lbl_avatar = QLabel()
+        self._lbl_avatar.setObjectName("avatar")
+        self._lbl_avatar.setFixedSize(40, 40)
+        self._lbl_avatar.setAlignment(Qt.AlignCenter)
+        placeholder = self.username[0].upper() if self.username else "?"
+        self._lbl_avatar.setText(placeholder)
+        tb.addWidget(self._lbl_avatar)
+
+        self._lbl_username = QLabel(self.username or "你好")
+        self._lbl_username.setObjectName("userName")
+        tb.addWidget(self._lbl_username)
+
+        # 设置 / 导出 / 退出登录（图标按钮）
+        btn_cfg = QPushButton("⚙")
+        btn_cfg.setObjectName("iconBtn")
+        btn_cfg.setToolTip("上下班时间配置")
+        btn_cfg.setFixedSize(32, 32)
+        btn_cfg.clicked.connect(self._open_config)
+        tb.addWidget(btn_cfg)
+
+        btn_exp = QPushButton("⇩")
+        btn_exp.setObjectName("iconBtn")
+        btn_exp.setToolTip("导出考勤记录 CSV")
+        btn_exp.setFixedSize(32, 32)
+        btn_exp.clicked.connect(self._export_csv)
+        tb.addWidget(btn_exp)
+
+        btn_lo = QPushButton("⏻")
+        btn_lo.setObjectName("iconBtn")
+        btn_lo.setToolTip("退出登录")
+        btn_lo.setFixedSize(32, 32)
+        btn_lo.clicked.connect(self._logout)
+        tb.addWidget(btn_lo)
+
+        root_vb.addWidget(top_bar)
+
+        # ─────────────────────────────────────
+        #  内容区：左控制卡片 + 右详情卡片
+        # ─────────────────────────────────────
+        body = QWidget()
+        body.setObjectName("centralRoot")
+        root_hb = QHBoxLayout(body)
+        root_hb.setContentsMargins(14, 14, 14, 14)
+        root_hb.setSpacing(14)
+
+        root_hb.addWidget(self._build_left_panel(), stretch=0)
+        root_hb.addWidget(self._build_right_panel(), stretch=1)
+
+        root_vb.addWidget(body, stretch=1)
 
         # 初始化 stub 控件（供 _update_stats / _populate_table 写入，不显示）
         self._build_stats_cards()
@@ -1483,119 +1844,73 @@ class MainWindow(QMainWindow):
     # ═══════════════════════════════════════
     #  左侧控制面板
     # ═══════════════════════════════════════
+    def _make_hsep(self):
+        """细分割线（QSS #hsep）"""
+        sep = QFrame()
+        sep.setObjectName("hsep")
+        return sep
+
     def _build_left_panel(self):
-        frame = QFrame()
-        frame.setFixedWidth(330)
-        frame.setStyleSheet("""
-            QFrame {
-                background: rgba(240,255,240,0.88);
-                border: 2px solid #7ab07a;
-                border-radius: 4px;
-            }
-            QLabel { background: transparent; }
-            QComboBox, QLineEdit {
-                background: white;
-                border: 1px solid #aaa;
-                padding: 1px 4px;
-                font-size: 12px;
-            }
-            QComboBox QAbstractItemView {
-                background: white;
-                border: 1px solid #aaa;
-                selection-background-color: #1976D2;
-                selection-color: black;
-            }
-            QComboBox QAbstractItemView::item:hover {
-                background-color: #42A5F5;
-                color: black;
-            }
-            QPushButton {
-                font-size: 12px;
-                padding: 2px 10px;
-                background: #e8e8e8;
-                border: 1px solid #999;
-                border-radius: 2px;
-            }
-            QPushButton:hover { background: #d0d0d0; }
-        """)
+        card = QFrame()
+        card.setObjectName("card")
+        card.setFixedWidth(350)
 
-        vb = QVBoxLayout(frame)
-        vb.setContentsMargins(8, 8, 8, 8)
-        vb.setSpacing(6)
+        vb = QVBoxLayout(card)
+        vb.setContentsMargins(18, 16, 18, 16)
+        vb.setSpacing(12)
 
-        # ── 顶部标题（头像 + 用户名）
-        top_bar = QHBoxLayout()
-        top_bar.setSpacing(8)
+        # ── 考勤周期 ──
+        lbl_sec1 = QLabel("考勤周期")
+        lbl_sec1.setObjectName("sectionTitle")
+        vb.addWidget(lbl_sec1)
 
-        # 头像标签（初始显示首字符占位）
-        self._lbl_avatar = QLabel()
-        self._lbl_avatar.setFixedSize(40, 40)
-        self._lbl_avatar.setAlignment(Qt.AlignCenter)
-        self._lbl_avatar.setStyleSheet("""
-            QLabel {
-                background: #1976D2;
-                border-radius: 20px;
-                font-size: 16px;
-                font-weight: bold;
-                color: white;
-            }
-        """)
-        # 显示工号首字符作为占位
-        placeholder = self.username[0].upper() if self.username else "?"
-        self._lbl_avatar.setText(placeholder)
-        top_bar.addWidget(self._lbl_avatar)
-
-        self._lbl_username = QLabel(self.username or "你好")
-        self._lbl_username.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-        self._lbl_username.setStyleSheet("""
-            QLabel {
-                background: transparent;
-                border: none;
-                font-size: 14px;
-                font-weight: bold;
-                padding: 4px;
-                color: #2d5a1e;
-            }
-        """)
-        top_bar.addWidget(self._lbl_username, stretch=1)
-        vb.addLayout(top_bar)
-
-        # ── 显示范围（本月/上月考勤周期）
         row_range = QHBoxLayout()
-        row_range.addWidget(QLabel("显示范围："))
+        row_range.setSpacing(8)
+        lbl_k1 = QLabel("显示范围")
+        lbl_k1.setObjectName("detailKey")
+        row_range.addWidget(lbl_k1)
         self.combo_range = QComboBox()
         self.combo_range.addItem("本月", "current")
         self.combo_range.addItem("上月", "prev")
-        self.combo_range.setFixedWidth(160)
         self.combo_range.currentIndexChanged.connect(self._on_range_combo_changed)
-        row_range.addWidget(self.combo_range)
-        row_range.addStretch()
+        row_range.addWidget(self.combo_range, stretch=1)
         vb.addLayout(row_range)
 
-        # ── 日期选择
         row_date = QHBoxLayout()
-        row_date.addWidget(QLabel("日期选择："))
+        row_date.setSpacing(8)
+        lbl_k2 = QLabel("日期选择")
+        lbl_k2.setObjectName("detailKey")
+        row_date.addWidget(lbl_k2)
         self.combo_date = QComboBox()
         self._fill_date_combo()
-        self.combo_date.setFixedWidth(160)
         self.combo_date.currentIndexChanged.connect(self._on_date_combo_changed)
-        row_date.addWidget(self.combo_date)
-        row_date.addStretch()
+        row_date.addWidget(self.combo_date, stretch=1)
         vb.addLayout(row_date)
 
-        # ── 加班设置
+        vb.addWidget(self._make_hsep())
+
+        # ── 加班设置 ──
+        lbl_sec2 = QLabel("加班设置")
+        lbl_sec2.setObjectName("sectionTitle")
+        vb.addWidget(lbl_sec2)
+
         row_ot = QHBoxLayout()
-        row_ot.addWidget(QLabel("加班设置："))
+        row_ot.setSpacing(6)
+        row_ot.addStretch()
         self.combo_ot_h = QComboBox()
         self.combo_ot_h.addItems([str(i) for i in range(13)])
-        self.combo_ot_h.setFixedWidth(48)
+        self.combo_ot_h.setFixedWidth(64)
         row_ot.addWidget(self.combo_ot_h)
-        row_ot.addWidget(QLabel("时"))
+        lbl_h = QLabel("时")
+        lbl_h.setObjectName("detailKey")
+        row_ot.addWidget(lbl_h)
         self.combo_ot_m = QComboBox()
         self.combo_ot_m.addItems(["0", "15", "30", "45"])
-        self.combo_ot_m.setFixedWidth(48)
+        self.combo_ot_m.setFixedWidth(64)
         row_ot.addWidget(self.combo_ot_m)
-        row_ot.addWidget(QLabel("分"))
+        lbl_m = QLabel("分")
+        lbl_m.setObjectName("detailKey")
+        row_ot.addWidget(lbl_m)
         row_ot.addStretch()
         vb.addLayout(row_ot)
 
@@ -1603,8 +1918,15 @@ class MainWindow(QMainWindow):
         self.combo_ot_h.currentIndexChanged.connect(self._refresh_detail_panel)
         self.combo_ot_m.currentIndexChanged.connect(self._refresh_detail_panel)
 
-        # ── 下班提醒设置
+        vb.addWidget(self._make_hsep())
+
+        # ── 下班提醒设置 ──
+        lbl_sec3 = QLabel("下班提醒")
+        lbl_sec3.setObjectName("sectionTitle")
+        vb.addWidget(lbl_sec3)
+
         row_remind = QHBoxLayout()
+        row_remind.setSpacing(6)
         # 自定义提醒图标（base64内嵌，打包时无需额外文件）
         _remind_icon_b64 = (
             "iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAIAAABvFaqvAAAB60lEQVR4nNWUv2tUQRDHv7P73l1SRAXPmBRiTCMKokEELSyiKIKVaCmSaKNWVlZqIdFCEEHE7vwLUoggapEgsYggCCInkkJBDxRNcv4Ix93+mJF9F4u729NE0+TbvWHfZ2e+MzskIlgJqRWhYBWCRMAC+R8QZwgiKAIBnv8JxBL+V4T5BS7PeedZ/82DpBPlddleGndPSqgbDBRw9iBdPJIPGWYJtota5qhRTqns9l8z377S7p3oX0tTM/LjI04fQ3Gki4VUlCTN8iwifPhmFSeqdydrIuH7U8XtvRoiEyUjIs5Lu1R7UbM/ZfINhnbg3HCOheoOfev02PGEGA9eBc+jTYx4WLNwFoUeAsj6EHGMDT1KNL7XOprdBCIKt21cQ1v6MV2Smc82nyCfIFFSfGZhcWhrOB99nc0ggBlpQpePqoV5HLjh7kyY+y/taLF++zGogKcVAxGtItW1du23U3L9obkyzr6ShVKgT5LN7FIZ2aPv7esOvW2egwiokTwR3n1xU2+5UsWuTfS+i8+8sLlUmRpf2K5vDXV7gaY/DmTDLM8Y7E0Gexcjw0BO06lpA4Pnc6F3LcMUBwHQavG5IctOCCcHcuvz9OiDO78tjdy99A3J2ZR10jJAAHy2UhQixOWB0FmrbtUuXb8ARkIBc798WpwAAAAASUVORK5CYII="
@@ -1617,23 +1939,25 @@ class MainWindow(QMainWindow):
         lbl_bell = QLabel("🔔")
         lbl_bell.setStyleSheet("font-size: 14px;")
         row_remind.addWidget(lbl_bell)
-        row_remind.addWidget(QLabel("提醒"))
+        lbl_r = QLabel("提醒")
+        lbl_r.setObjectName("detailKey")
+        row_remind.addWidget(lbl_r)
         self.spin_remind = QSpinBox()
         self.spin_remind.setRange(0, 60)
         self.spin_remind.setValue(5)
         self.spin_remind.setSingleStep(5)
-        self.spin_remind.setFixedWidth(50)
-        self.spin_remind.setStyleSheet("QSpinBox { font-size: 12px; }")
+        self.spin_remind.setFixedWidth(64)
         row_remind.addWidget(self.spin_remind)
-        row_remind.addWidget(QLabel("分钟"))
+        lbl_min = QLabel("分钟")
+        lbl_min.setObjectName("detailKey")
+        row_remind.addWidget(lbl_min)
         self.cb_remind = QCheckBox("")
         self.cb_remind.setChecked(True)
-        self.cb_remind.setStyleSheet("QCheckBox { spacing: 4px; }")
         row_remind.addWidget(self.cb_remind)
         self.btn_test_remind = QPushButton()
         self.btn_test_remind.setIcon(_QIcon(_remind_pix))
         self.btn_test_remind.setIconSize(QSize(18, 18))
-        self.btn_test_remind.setFixedSize(28, 24)
+        self.btn_test_remind.setFixedSize(28, 28)
         self.btn_test_remind.setStyleSheet("QPushButton { padding: 0px; }")
         self.btn_test_remind.setToolTip("手动触发下班提醒")
         self.btn_test_remind.clicked.connect(self._manual_show_remind)
@@ -1662,72 +1986,58 @@ class MainWindow(QMainWindow):
         self.cb_remind.stateChanged.connect(_save_remind_cfg)
         self.spin_remind.valueChanged.connect(_save_remind_cfg)
 
-        # ── 分隔线
-        sep = QFrame()
-        sep.setFrameShape(QFrame.HLine)
-        sep.setStyleSheet("border: 1px solid #adc8ad;")
-        vb.addWidget(sep)
+        vb.addWidget(self._make_hsep())
 
-        # ── 迟到次数 + 早退次数
+        # ── 考勤状态 ──
+        lbl_sec4 = QLabel("考勤状态")
+        lbl_sec4.setObjectName("sectionTitle")
+        vb.addWidget(lbl_sec4)
+
         row_counts = QHBoxLayout()
-        row_counts.addWidget(QLabel("迟到次数："))
+        row_counts.setSpacing(8)
+        lbl_lk = QLabel("迟到次数")
+        lbl_lk.setObjectName("detailKey")
+        row_counts.addWidget(lbl_lk)
         self._lbl_late = QLabel("0")
-        self._lbl_late.setStyleSheet("font-weight:bold; color:#c0392b;")
+        self._lbl_late.setObjectName("valueDanger")
         row_counts.addWidget(self._lbl_late)
-        row_counts.addSpacing(16)
-        row_counts.addWidget(QLabel("早退次数："))
+        row_counts.addStretch()
+        lbl_ek = QLabel("早退次数")
+        lbl_ek.setObjectName("detailKey")
+        row_counts.addWidget(lbl_ek)
         self._lbl_early = QLabel("0")
-        self._lbl_early.setStyleSheet("font-weight:bold; color:#c0392b;")
+        self._lbl_early.setObjectName("valueDanger")
         row_counts.addWidget(self._lbl_early)
         row_counts.addStretch()
         vb.addLayout(row_counts)
 
-        # ── 考勤刷新倒计时
+        # ── 考勤刷新倒计时 ──
         row_timer = QHBoxLayout()
-        row_timer.addWidget(QLabel("考勤刷新倒计时："))
+        row_timer.setSpacing(8)
+        lbl_tk = QLabel("刷新倒计时")
+        lbl_tk.setObjectName("detailKey")
+        row_timer.addWidget(lbl_tk)
         self._lbl_countdown = QLineEdit("--")
         self._lbl_countdown.setReadOnly(True)
-        self._lbl_countdown.setFixedWidth(60)
+        self._lbl_countdown.setFixedWidth(64)
         self._lbl_countdown.setAlignment(Qt.AlignCenter)
         row_timer.addWidget(self._lbl_countdown)
-        btn_refresh = QPushButton("刷新")
+        btn_refresh = QPushButton("立即刷新")
         btn_refresh.clicked.connect(self._fetch_data)
         row_timer.addWidget(btn_refresh)
         row_timer.addStretch()
         vb.addLayout(row_timer)
 
-        # ── 底部按钮行：设置 + 导出 + 退出
-        row_btns = QHBoxLayout()
-        btn_cfg = QPushButton("⚙ 设置")
-        btn_cfg.clicked.connect(self._open_config)
-        row_btns.addWidget(btn_cfg)
-
-        btn_exp = QPushButton("📥 导出")
-        btn_exp.clicked.connect(self._export_csv)
-        row_btns.addWidget(btn_exp)
-
-        btn_lo = QPushButton("退出")
-        btn_lo.clicked.connect(self._logout)
-        row_btns.addWidget(btn_lo)
-        vb.addLayout(row_btns)
-
-        # ── 失败重试提示标签（无网络时显示）
+        # ── 失败重试提示标签（无网络时显示）──
         self._lbl_retry = QLabel("")
         self._lbl_retry.setAlignment(Qt.AlignCenter)
         self._lbl_retry.setWordWrap(True)
-        self._lbl_retry.setStyleSheet("""
-            QLabel {
-                color: #c0392b;
-                font-size: 11px;
-                padding: 4px;
-                background: transparent;
-            }
-        """)
+        self._lbl_retry.setObjectName("valueDanger")
         self._lbl_retry.setVisible(False)
         vb.addWidget(self._lbl_retry)
 
         vb.addStretch()
-        return frame
+        return card
 
     def _calc_cycle_range(self, offset=0):
         """计算考勤周期起止日期。
@@ -1796,127 +2106,103 @@ class MainWindow(QMainWindow):
     # ═══════════════════════════════════════
     #  右侧详情面板
     # ═══════════════════════════════════════
+    def _make_metric_card(self, title, key, value_obj_name):
+        """构建指标卡并登记到 _detail_lines"""
+        card = QFrame()
+        card.setObjectName("metricCard")
+        vbl = QVBoxLayout(card)
+        vbl.setContentsMargins(16, 12, 16, 12)
+        vbl.setSpacing(4)
+        lbl_t = QLabel(title)
+        lbl_t.setObjectName("metricTitle")
+        lbl_v = QLabel("--")
+        lbl_v.setObjectName(value_obj_name)
+        vbl.addWidget(lbl_t)
+        vbl.addWidget(lbl_v)
+        self._detail_lines[key] = lbl_v
+        return card
+
+    def _make_detail_val(self, text, obj_name):
+        """构建详情值标签"""
+        lbl = QLabel(text)
+        lbl.setObjectName(obj_name)
+        return lbl
+
     def _build_right_panel(self):
-        frame = QFrame()
-        frame.setStyleSheet("""
-            QFrame {
-                background: rgba(240,255,240,0.88);
-                border: 2px solid #7ab07a;
-                border-radius: 4px;
-            }
-            QLabel { background: transparent; }
-        """)
+        card = QFrame()
+        card.setObjectName("card")
 
-        vb = QVBoxLayout(frame)
-        vb.setContentsMargins(0, 0, 0, 0)
-        vb.setSpacing(0)
+        vb = QVBoxLayout(card)
+        vb.setContentsMargins(18, 16, 18, 16)
+        vb.setSpacing(14)
 
-        # ── 标题栏
-        title_bar = QFrame()
-        title_bar.setFixedHeight(32)
-        title_bar.setStyleSheet("""
-            QFrame {
-                background: rgba(220,240,220,0.9);
-                border: none;
-                border-bottom: 1px solid #7ab07a;
-            }
-        """)
-        tb_layout = QHBoxLayout(title_bar)
-        tb_layout.setContentsMargins(8, 0, 8, 0)
-        lbl_title = QLabel(f"考勤管理  ·  {self.username}")
-        lbl_title.setStyleSheet("font-size:13px;font-weight:bold;color:#2d5a1e;")
-        tb_layout.addWidget(lbl_title)
-        # 版本号标签
-        lbl_ver = QLabel(APP_VERSION)
-        lbl_ver.setStyleSheet("""
-            font-size:11px; color:#2d5a1e;
-            background: rgba(255,255,255,0.55);
-            border: 1px solid #7ab07a;
-            border-radius: 6px;
-            padding: 1px 7px;
-        """)
-        tb_layout.addWidget(lbl_ver)
-        tb_layout.addStretch()
-
-        # 进度条（查询时显示）
+        # ── 标题行：今日详情 + 进度条 ──
+        head = QHBoxLayout()
+        head.setSpacing(12)
+        lbl_title = QLabel("今日详情")
+        lbl_title.setObjectName("sectionTitle")
+        head.addWidget(lbl_title)
+        head.addStretch()
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
         self.progress_bar.setFixedHeight(4)
-        self.progress_bar.setStyleSheet("""
-            QProgressBar { border: none; background: #ddd; }
-            QProgressBar::chunk { background: #1976D2; }
-        """)
-        tb_layout.addWidget(self.progress_bar)
+        self.progress_bar.setFixedWidth(180)
+        head.addWidget(self.progress_bar)
+        vb.addLayout(head)
 
-        vb.addWidget(title_bar)
-
-        # ── "详情信息" 副标题
-        lbl_sub = QLabel("详情信息")
-        lbl_sub.setAlignment(Qt.AlignCenter)
-        lbl_sub.setFixedHeight(28)
-        lbl_sub.setStyleSheet("""
-            QLabel {
-                background: rgba(210,235,210,0.8);
-                border: none;
-                border-bottom: 1px solid #7ab07a;
-                font-size: 12px;
-                color: #3a6030;
-            }
-        """)
-        vb.addWidget(lbl_sub)
-
-        # ── 内容区（今日考勤详情）
-        content = QWidget()
-        content.setStyleSheet("background: transparent;")
-        content_vb = QVBoxLayout(content)
-        content_vb.setContentsMargins(12, 10, 12, 10)
-        content_vb.setSpacing(6)
-
-        # 今日打卡信息
+        # ── 指标卡（2×2）──
         self._detail_lines = {}
-        detail_items = [
-            ("clock_records", "打卡记录",  "--"),
-            ("should_out",   "应下班时间", "--:--"),
-            ("worked",       "已工作时长", "00时00分"),
-            ("overtime",     "已加班时长", "00时00分"),
-            ("ot_weekday",   "平加(h)",    "0"),
-            ("ot_weekend",   "周加(h)",    "0"),
-            ("ot_holiday",   "假加(h)",    "0"),
-            ("ot_cycle_sum", "合计加班(h)","0"),
-        ]
-        for key, label, default in detail_items:
-            row = QHBoxLayout()
-            lbl_k = QLabel(f"{label}：")
-            lbl_k.setFixedWidth(90)
-            lbl_k.setStyleSheet("font-size:12px; color:#3a6030;")
-            lbl_v = QLabel(default)
-            lbl_v.setStyleSheet("font-size:13px; font-weight:bold; color:#1a3a10;")
-            row.addWidget(lbl_k)
-            row.addWidget(lbl_v)
-            row.addStretch()
-            content_vb.addLayout(row)
-            self._detail_lines[key] = lbl_v
+        grid = QGridLayout()
+        grid.setSpacing(14)
+        grid.addWidget(self._make_metric_card("应下班时间", "should_out", "metricValuePrimary"), 0, 0)
+        grid.addWidget(self._make_metric_card("已工作时长", "worked", "metricValue"), 0, 1)
+        grid.addWidget(self._make_metric_card("已加班时长", "overtime", "metricValueWarning"), 1, 0)
+        grid.addWidget(self._make_metric_card("合计加班(h)", "ot_cycle_sum", "metricValueSuccess"), 1, 1)
+        vb.addLayout(grid)
 
-        content_vb.addStretch()
+        vb.addWidget(self._make_hsep())
 
-        # 底部状态栏
+        # ── 打卡记录 ──
+        row_rec = QHBoxLayout()
+        row_rec.setSpacing(10)
+        lbl_k = QLabel("打卡记录")
+        lbl_k.setObjectName("detailKey")
+        row_rec.addWidget(lbl_k)
+        self._detail_lines["clock_records"] = self._make_detail_val("--", "detailValMono")
+        row_rec.addWidget(self._detail_lines["clock_records"])
+        row_rec.addStretch()
+        vb.addLayout(row_rec)
+
+        # ── 加班明细（平加/周加/假加）──
+        row_ot = QHBoxLayout()
+        row_ot.setSpacing(18)
+        for key, label in [("ot_weekday", "平加(h)"), ("ot_weekend", "周加(h)"), ("ot_holiday", "假加(h)")]:
+            sub = QHBoxLayout()
+            sub.setSpacing(6)
+            lbl = QLabel(label)
+            lbl.setObjectName("detailKey")
+            sub.addWidget(lbl)
+            self._detail_lines[key] = self._make_detail_val("0", "detailValMono")
+            sub.addWidget(self._detail_lines[key])
+            row_ot.addLayout(sub)
+        row_ot.addStretch()
+        vb.addLayout(row_ot)
+
+        vb.addStretch()
+
+        # ── 底部状态栏 ──
+        status_bar = QFrame()
+        status_bar.setObjectName("statusBar")
+        status_bar.setFixedHeight(32)
+        sbl = QHBoxLayout(status_bar)
+        sbl.setContentsMargins(12, 0, 12, 0)
         self._lbl_status = QLabel("就绪")
-        self._lbl_status.setFixedHeight(22)
-        self._lbl_status.setStyleSheet("""
-            QLabel {
-                background: rgba(200,230,200,0.8);
-                border: none;
-                border-top: 1px solid #7ab07a;
-                font-size: 11px;
-                color: #4a6a3a;
-                padding-left: 6px;
-            }
-        """)
+        self._lbl_status.setStyleSheet("color: #6B7280; font-size: 12px; background: transparent;")
+        sbl.addWidget(self._lbl_status)
+        sbl.addStretch()
+        vb.addWidget(status_bar)
 
-        vb.addWidget(content, stretch=1)
-        vb.addWidget(self._lbl_status)
-
-        return frame
+        return card
 
     def _build_stats_cards(self):
         """兼容旧代码调用（不再显示卡片，改由右侧详情面板展示）
@@ -3127,6 +3413,7 @@ def main():
         app = QApplication(sys.argv)
         app.setApplicationName("考勤管理系统")
         app.setStyle("Fusion")
+        app.setStyleSheet(STYLE_MODERN)  # 现代简约主题（v105 界面升级）
         app.setFont(QFont("Microsoft YaHei", 10))
         # 防止关闭所有窗口时自动退出（程序生命周期由托盘图标控制）
         app.setQuitOnLastWindowClosed(False)
