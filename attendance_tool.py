@@ -21,7 +21,7 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v107"
+APP_VERSION = "v108"
 import json
 import asyncio
 import threading
@@ -1210,7 +1210,8 @@ class LoginWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("考勤管理系统 · 登录")
-        self.setFixedSize(460, 560)
+        # 窗口宽度固定 412（卡片 380 + 左右 16px 渐变边距），高度由内容自适应
+        self.setFixedWidth(412)
         self.setStyleSheet(LOGIN_BG_QSS)  # 代码内渐变背景，不使用空的 STYLE_LOGIN
         self._worker = None
         self._is_logging_in = False  # 登录中标志，防止重复登录
@@ -1283,15 +1284,11 @@ class LoginWindow(QWidget):
         # ── 右上角淡蓝色光斑装饰 ──
         glow = QFrame(root)
         glow.setObjectName("glowBox")
-        glow.setFixedSize(280, 280)
-        glow.move(200, -90)
+        glow.setFixedSize(240, 240)
+        glow.move(140, -80)
         glow.raise_()
 
         # ── 水平居中白色圆角卡片 ──
-        center_vb = QVBoxLayout()
-        center_vb.setContentsMargins(0, 0, 0, 0)
-        center_vb.setSpacing(0)
-
         self._card = QFrame()
         self._card.setObjectName("loginCard")
         self._card.setFixedWidth(380)
@@ -1303,9 +1300,9 @@ class LoginWindow(QWidget):
         try:
             from PyQt5.QtWidgets import QGraphicsDropShadowEffect
             _sh = QGraphicsDropShadowEffect(self._card)
-            _sh.setBlurRadius(48)
-            _sh.setOffset(0, 10)
-            _sh.setColor(QColor(26, 29, 38, 55))
+            _sh.setBlurRadius(32)
+            _sh.setOffset(0, 8)
+            _sh.setColor(QColor(26, 29, 38, 45))
             self._card.setGraphicsEffect(_sh)
         except Exception:
             pass
@@ -1441,14 +1438,14 @@ class LoginWindow(QWidget):
             "color: #DC2626; font-size: 13px; background: transparent; margin-top: 12px;")
         cl.addWidget(self.lbl_err)
 
-        center_vb.addStretch()
-        center_vb.addWidget(self._card, alignment=Qt.AlignHCenter)
-        center_vb.addStretch()
-        root_lay.addLayout(center_vb, 1)
+        root_lay.addWidget(self._card, alignment=Qt.AlignCenter)
 
         # 回车快捷登录
         self.input_user.returnPressed.connect(self._do_login)
         self.input_pwd.returnPressed.connect(self._do_login)
+
+        # 窗口高度按卡片内容 + 上下 16px 渐变边距自适应，宽度 412（卡片 380 + 左右 16px）
+        self.setFixedHeight(self._card.sizeHint().height() + 32)
 
 
     def _do_login(self):
@@ -3876,7 +3873,7 @@ def main():
         app = QApplication(sys.argv)
         app.setApplicationName("考勤管理系统")
         app.setStyle("Fusion")
-        app.setStyleSheet(STYLE_MODERN)  # 现代简约主题（v107：修复登录窗居中、主窗口控制栏截断与控件拥挤）
+        app.setStyleSheet(STYLE_MODERN)  # 现代简约主题（v108：进一步压缩登录窗四周空白）
         app.setFont(QFont("Microsoft YaHei", 10))
         # 防止关闭所有窗口时自动退出（程序生命周期由托盘图标控制）
         app.setQuitOnLastWindowClosed(False)
