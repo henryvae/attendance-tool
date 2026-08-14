@@ -21,7 +21,7 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v106"
+APP_VERSION = "v107"
 import json
 import asyncio
 import threading
@@ -33,7 +33,7 @@ from PyQt5.QtWidgets import (
     QHeaderView, QComboBox, QProgressBar,
     QAbstractItemView, QFileDialog, QCheckBox, QStackedWidget,
     QSystemTrayIcon, QMenu, QAction, QTimeEdit,
-    QStyle, QDialog, QSpinBox,
+    QStyle, QDialog, QSpinBox, QSizePolicy,
 )
 from PyQt5.QtCore import Qt, QDate, QThread, pyqtSignal, QTimer, QTime, QSize
 from PyQt5.QtNetwork import QLocalServer, QLocalSocket
@@ -1010,8 +1010,9 @@ QPushButton#iconBtn {
     padding: 0;
     min-width: 32px; max-width: 32px;
     min-height: 32px; max-height: 32px;
-    font-size: 14px;
+    font-size: 16px;
     color: #6B7280;
+    text-align: center;
 }
 QPushButton#iconBtn:hover { color: #4F6BF6; border-color: #4F6BF6; background: #F5F7FF; }
 
@@ -1154,7 +1155,7 @@ QMenu::separator { height: 1px; background: #E8EAF0; margin: 4px 8px; }
 #sideBrand { font-size: 14px; font-weight: 700; color: #1A1D26; }
 #navLogout {
     background: transparent;
-    border: 1px solid transparent;
+    border: none;
     border-radius: 9px;
     color: #DC2626;
     font-size: 13px;
@@ -1163,6 +1164,7 @@ QMenu::separator { height: 1px; background: #E8EAF0; margin: 4px 8px; }
     text-align: left;
 }
 #navLogout:hover { background: #FDEBEB; color: #DC2626; }
+#navLogout:pressed { background: #F9D2D2; }
 #settingsCard { background: #FFFFFF; border: 1px solid #E8EAF0; border-radius: 12px; }
 #otCard { background: #FFFFFF; border: 1px solid #E8EAF0; border-radius: 12px; }
 """
@@ -1272,6 +1274,12 @@ class LoginWindow(QWidget):
         root_lay.setContentsMargins(0, 0, 0, 0)
         root_lay.setSpacing(0)
 
+        # 让渐变背景 root 填满整个登录窗口，避免右侧/底部出现空白
+        main_lay = QVBoxLayout(self)
+        main_lay.setContentsMargins(0, 0, 0, 0)
+        main_lay.setSpacing(0)
+        main_lay.addWidget(root)
+
         # ── 右上角淡蓝色光斑装饰 ──
         glow = QFrame(root)
         glow.setObjectName("glowBox")
@@ -1280,10 +1288,9 @@ class LoginWindow(QWidget):
         glow.raise_()
 
         # ── 水平居中白色圆角卡片 ──
-        hcenter = QHBoxLayout()
-        hcenter.setContentsMargins(0, 0, 0, 0)
-        hcenter.setSpacing(0)
-        hcenter.addStretch()
+        center_vb = QVBoxLayout()
+        center_vb.setContentsMargins(0, 0, 0, 0)
+        center_vb.setSpacing(0)
 
         self._card = QFrame()
         self._card.setObjectName("loginCard")
@@ -1434,9 +1441,10 @@ class LoginWindow(QWidget):
             "color: #DC2626; font-size: 13px; background: transparent; margin-top: 12px;")
         cl.addWidget(self.lbl_err)
 
-        hcenter.addWidget(self._card)
-        hcenter.addStretch()
-        root_lay.addLayout(hcenter, 1)
+        center_vb.addStretch()
+        center_vb.addWidget(self._card, alignment=Qt.AlignHCenter)
+        center_vb.addStretch()
+        root_lay.addLayout(center_vb, 1)
 
         # 回车快捷登录
         self.input_user.returnPressed.connect(self._do_login)
@@ -1885,27 +1893,34 @@ class MainWindow(QMainWindow):
         self._lbl_username.setObjectName("userName")
         tb.addWidget(self._lbl_username)
 
-        # 设置（切到系统设置页）/ 导出 / 退出登录
+        # 设置 / 导出 / 退出登录 图标按钮组
+        btn_group = QFrame()
+        btn_group_lay = QHBoxLayout(btn_group)
+        btn_group_lay.setContentsMargins(0, 0, 0, 0)
+        btn_group_lay.setSpacing(8)
+
         btn_cfg = QPushButton("\u2699")
         btn_cfg.setObjectName("iconBtn")
         btn_cfg.setToolTip("系统设置")
         btn_cfg.setFixedSize(32, 32)
         btn_cfg.clicked.connect(lambda: self._switch_page(3))
-        tb.addWidget(btn_cfg)
+        btn_group_lay.addWidget(btn_cfg)
 
         btn_exp = QPushButton("\u21E9")
         btn_exp.setObjectName("iconBtn")
         btn_exp.setToolTip("导出考勤记录 CSV")
         btn_exp.setFixedSize(32, 32)
         btn_exp.clicked.connect(self._export_csv)
-        tb.addWidget(btn_exp)
+        btn_group_lay.addWidget(btn_exp)
 
         btn_lo = QPushButton("\u23FB")
         btn_lo.setObjectName("iconBtn")
         btn_lo.setToolTip("退出登录")
         btn_lo.setFixedSize(32, 32)
         btn_lo.clicked.connect(self._logout)
-        tb.addWidget(btn_lo)
+        btn_group_lay.addWidget(btn_lo)
+
+        tb.addWidget(btn_group)
 
         return top_bar
 
@@ -1962,6 +1977,13 @@ class MainWindow(QMainWindow):
 
         vb.addStretch()
 
+        # 分隔线
+        sep = QFrame()
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background: #E8EAF0; border: none;")
+        vb.addWidget(sep)
+        vb.addSpacing(10)
+
         # 退出登录（独立按钮）
         btn_logout = QPushButton("\u23FB 退出登录")
         btn_logout.setObjectName("navLogout")
@@ -1992,7 +2014,7 @@ class MainWindow(QMainWindow):
         ctrl.setFixedHeight(54)
         ctrl_hb = QHBoxLayout(ctrl)
         ctrl_hb.setContentsMargins(10, 8, 10, 8)
-        ctrl_hb.setSpacing(10)
+        ctrl_hb.setSpacing(6)
 
         # 分段控件 本月/上月（代理隐藏的 combo_range）
         self.combo_range = QComboBox()
@@ -2021,27 +2043,25 @@ class MainWindow(QMainWindow):
 
         # 日期下拉
         self.combo_date = QComboBox()
-        self.combo_date.setMinimumWidth(130)
+        self.combo_date.setMinimumWidth(100)
         self._fill_date_combo()
         self.combo_date.currentIndexChanged.connect(self._on_date_combo_changed)
         ctrl_hb.addWidget(self.combo_date)
 
-        ctrl_hb.addStretch()
-
         # 加班设置 时/分
-        lbl_ot = QLabel("\u23F0 加班设置")
+        lbl_ot = QLabel("加班")
         lbl_ot.setObjectName("detailKey")
         ctrl_hb.addWidget(lbl_ot)
         self.combo_ot_h = QComboBox()
         self.combo_ot_h.addItems([str(i) for i in range(13)])
-        self.combo_ot_h.setFixedWidth(56)
+        self.combo_ot_h.setFixedWidth(44)
         ctrl_hb.addWidget(self.combo_ot_h)
         lbl_h = QLabel("时")
         lbl_h.setObjectName("detailKey")
         ctrl_hb.addWidget(lbl_h)
         self.combo_ot_m = QComboBox()
         self.combo_ot_m.addItems(["0", "15", "30", "45"])
-        self.combo_ot_m.setFixedWidth(56)
+        self.combo_ot_m.setFixedWidth(44)
         ctrl_hb.addWidget(self.combo_ot_m)
         lbl_m = QLabel("分")
         lbl_m.setObjectName("detailKey")
@@ -2050,7 +2070,7 @@ class MainWindow(QMainWindow):
         self.combo_ot_m.currentIndexChanged.connect(self._refresh_detail_panel)
 
         # 立即刷新
-        btn_refresh = QPushButton("\u21BB 立即刷新")
+        btn_refresh = QPushButton("\u21BB 刷新")
         btn_refresh.setObjectName("btnPrimary")
         btn_refresh.setFixedHeight(34)
         btn_refresh.clicked.connect(self._fetch_data)
@@ -2061,15 +2081,22 @@ class MainWindow(QMainWindow):
         self.progress_bar.setObjectName("fetchProgress")
         self.progress_bar.setVisible(False)
         self.progress_bar.setFixedHeight(4)
-        self.progress_bar.setFixedWidth(120)
+        self.progress_bar.setFixedWidth(50)
         ctrl_hb.addWidget(self.progress_bar)
 
+        vb.addWidget(ctrl)
+
+        # ── 状态行（位于控制栏下方，避免控制栏过宽被截断）──
+        status_row = QHBoxLayout()
+        status_row.setContentsMargins(10, 2, 10, 0)
+        status_row.setSpacing(0)
         self._lbl_status = QLabel("就绪")
         self._lbl_status.setObjectName("topBarHint")
-        self._lbl_status.setFixedHeight(20)
-        ctrl_hb.addWidget(self._lbl_status)
-
-        vb.addWidget(ctrl)
+        self._lbl_status.setFixedHeight(18)
+        self._lbl_status.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        status_row.addWidget(self._lbl_status)
+        status_row.addStretch()
+        vb.addLayout(status_row)
 
         # ── 4 个指标卡 ──
         self._detail_lines = {}
@@ -2208,14 +2235,16 @@ class MainWindow(QMainWindow):
         rvb.addWidget(lbl_rmd)
 
         row_rmd = QHBoxLayout()
-        row_rmd.setSpacing(8)
+        row_rmd.setContentsMargins(4, 4, 4, 4)
+        row_rmd.setSpacing(10)
         lbl_r = QLabel("提前")
         lbl_r.setObjectName("detailKey")
         row_rmd.addWidget(lbl_r)
         self.spin_remind = QSpinBox()
         self.spin_remind.setRange(0, 60)
         self.spin_remind.setSingleStep(5)
-        self.spin_remind.setFixedWidth(64)
+        self.spin_remind.setFixedWidth(60)
+        self.spin_remind.setAlignment(Qt.AlignCenter)
         row_rmd.addWidget(self.spin_remind)
         lbl_min = QLabel("分钟")
         lbl_min.setObjectName("detailKey")
@@ -2223,7 +2252,9 @@ class MainWindow(QMainWindow):
         self.cb_remind = QCheckBox("启用")
         row_rmd.addWidget(self.cb_remind)
         self.btn_test_remind = QPushButton("测试")
-        self.btn_test_remind.setFixedHeight(30)
+        self.btn_test_remind.setObjectName("btnPrimary")
+        self.btn_test_remind.setFixedHeight(28)
+        self.btn_test_remind.setFixedWidth(52)
         self.btn_test_remind.clicked.connect(self._manual_show_remind)
         row_rmd.addWidget(self.btn_test_remind)
         row_rmd.addStretch()
@@ -3845,7 +3876,7 @@ def main():
         app = QApplication(sys.argv)
         app.setApplicationName("考勤管理系统")
         app.setStyle("Fusion")
-        app.setStyleSheet(STYLE_MODERN)  # 现代简约主题（v106 界面升级：登录浮层卡+左侧导航+四页切换）
+        app.setStyleSheet(STYLE_MODERN)  # 现代简约主题（v107：修复登录窗居中、主窗口控制栏截断与控件拥挤）
         app.setFont(QFont("Microsoft YaHei", 10))
         # 防止关闭所有窗口时自动退出（程序生命周期由托盘图标控制）
         app.setQuitOnLastWindowClosed(False)
