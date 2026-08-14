@@ -1768,7 +1768,7 @@ class MainWindow(QMainWindow):
         self._today_should_out_min = None  # 今日应下班时间（分钟），_update_stats 计算后写入
 
         self.setWindowTitle(f"考勤管理  ·  {username}")
-        self.resize(940, 580)
+        self.resize(960, 640)
         self.setMinimumSize(840, 480)
 
         self._init_tray()
