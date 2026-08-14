@@ -21,7 +21,7 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v102"
+APP_VERSION = "v104"
 import json
 import asyncio
 import threading
@@ -2544,7 +2544,6 @@ class MainWindow(QMainWindow):
             a = int(minutes)
             return str(int(a / 60)).zfill(2) + "时" + str(int(a % 60)).zfill(2) + "分"
 
-        # ===== 完全对齐ku.py的 check_time_is_include_rest_time =====
         # 计算 [up, dowm) 区间内应扣除的休息时间（分钟）
         def check_time_is_include_rest_time(up, dowm,
                                             standed_up, rest1_begin, rest1_end,
@@ -2553,12 +2552,9 @@ class MainWindow(QMainWindow):
             # 提前打卡：早于标准上班时间的部分不算工作时间，补回来
             if up < standed_up and up != 0:
                 total_time += standed_up - up
-            # 逐分钟统计休息时间（午饭 + 晚饭）
-            for i in range(up, dowm):
-                if rest1_begin < i <= rest1_end:
-                    total_time += 1
-                if rest2_begin < i <= rest2_end:
-                    total_time += 1
+            # 区间重叠计算休息时间（半开区间 [begin, end)）
+            total_time += max(0, min(dowm, rest1_end) - max(up, rest1_begin))
+            total_time += max(0, min(dowm, rest2_end) - max(up, rest2_begin))
             return total_time
 
         attend_col   = col_idx(["出勤"])
