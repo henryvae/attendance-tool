@@ -1539,44 +1539,80 @@ def _white_check_icon_path():
     return icon_path
 
 
-def _svg_arrow_icon_path(direction="down", color="#6B7280", size=14):
-    """生成箭头 SVG 图标到缓存目录，返回本地文件路径，供 QSS `image:` 属性使用。
+def _arrow_icon_path(direction="down", color="#6B7280", size=14):
+    """生成箭头 PNG 图标到缓存目录，返回本地文件路径，供 QSS `image:` 属性使用。
+
+    使用 PNG 而非 SVG，避免 PyInstaller 打包后缺少 Qt SVG 插件导致 QSS image 空白。
+    由 _inject_style_icons 在 QApplication 创建后首次调用，确保 QPainter 可正常工作。
     direction: down | up
     """
+    from PyQt5.QtGui import QPixmap, QPainter, QPen, QColor
+    from PyQt5.QtCore import Qt, QPointF, QByteArray, QBuffer, QIODevice
+
     cache_dir = os.path.join(os.path.expanduser("~"), ".attendance_tool_cache")
     os.makedirs(cache_dir, exist_ok=True)
-    icon_path = os.path.join(cache_dir, f"arrow_{direction}_{color.replace('#', '')}_{size}.svg")
+    safe_color = color.replace("#", "")
+    icon_path = os.path.join(cache_dir, f"arrow_{direction}_{safe_color}_{size}.png")
     if os.path.exists(icon_path):
         return icon_path
 
-    points = "6 9 12 15 18 9" if direction == "down" else "6 15 12 9 18 15"
-    svg = (
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" '
-        f'viewBox="0 0 24 24" fill="none" stroke="{color}" stroke-width="2.5" '
-        f'stroke-linecap="round" stroke-linejoin="round"><polyline points="{points}"/></svg>'
-    )
-    with open(icon_path, "w", encoding="utf-8") as f:
-        f.write(svg)
+    pix = QPixmap(size, size)
+    pix.fill(Qt.transparent)
+    p = QPainter(pix)
+    p.setRenderHint(QPainter.Antialiasing)
+
+    pen = QPen(QColor(color))
+    pen.setWidth(2)
+    pen.setCapStyle(Qt.RoundCap)
+    pen.setJoinStyle(Qt.RoundJoin)
+    p.setPen(pen)
+
+    pad = size * 0.28
+    mid = size * 0.5
+    if direction == "down":
+        p.drawPolyline([
+            QPointF(pad, size * 0.38),
+            QPointF(mid, size * 0.62),
+            QPointF(size - pad, size * 0.38)
+        ])
+    else:  # up
+        p.drawPolyline([
+            QPointF(pad, size * 0.62),
+            QPointF(mid, size * 0.38),
+            QPointF(size - pad, size * 0.62)
+        ])
+    p.end()
+
+    ba = QByteArray()
+    buf = QBuffer(ba)
+    buf.open(QIODevice.WriteOnly)
+    pix.save(buf, "PNG")
+    buf.close()
+    with open(icon_path, "wb") as f:
+        f.write(ba.data())
     return icon_path
 
 
-# 预生成 QSS 会用到的箭头图标路径（在样式字符串中按占位符替换）
-_ARROW_DOWN_GRAY = _svg_arrow_icon_path("down", "#6B7280", 14)
-_ARROW_DOWN_PRIMARY = _svg_arrow_icon_path("down", "#4F6BF6", 14)
-_ARROW_UP_GRAY = _svg_arrow_icon_path("up", "#6B7280", 14)
-_ARROW_UP_PRIMARY = _svg_arrow_icon_path("up", "#4F6BF6", 14)
+_injected_style_cache = None
 
 
 def _inject_style_icons(style_str):
-    """把样式表中的图标占位符替换为本地 SVG 文件 URL。
-    Qt QSS 的 image: url() 需要本地文件路径，且用正斜杠。"""
+    """把样式表中的图标占位符替换为本地 PNG 文件 URL。
+
+    使用 PNG 避免打包后缺少 Qt SVG 插件导致图标空白；缓存结果避免重复生成。"""
+    global _injected_style_cache
+    if _injected_style_cache is not None:
+        return _injected_style_cache
+
     def file_url(path):
         return "file:///" + path.replace(os.sep, "/")
-    return (style_str
-            .replace("__ARROW_DOWN_GRAY__", file_url(_ARROW_DOWN_GRAY))
-            .replace("__ARROW_DOWN_PRIMARY__", file_url(_ARROW_DOWN_PRIMARY))
-            .replace("__ARROW_UP_GRAY__", file_url(_ARROW_UP_GRAY))
-            .replace("__ARROW_UP_PRIMARY__", file_url(_ARROW_UP_PRIMARY)))
+
+    _injected_style_cache = (style_str
+        .replace("__ARROW_DOWN_GRAY__", file_url(_arrow_icon_path("down", "#6B7280", 14)))
+        .replace("__ARROW_DOWN_PRIMARY__", file_url(_arrow_icon_path("down", "#4F6BF6", 14)))
+        .replace("__ARROW_UP_GRAY__", file_url(_arrow_icon_path("up", "#6B7280", 14)))
+        .replace("__ARROW_UP_PRIMARY__", file_url(_arrow_icon_path("up", "#4F6BF6", 14))))
+    return _injected_style_cache
 
 
 class _SignalLabel(QLabel):
