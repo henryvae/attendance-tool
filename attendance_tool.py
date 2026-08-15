@@ -48,12 +48,12 @@ from PyQt5.QtWidgets import (
     QHeaderView, QComboBox, QProgressBar,
     QAbstractItemView, QFileDialog, QCheckBox, QStackedWidget,
     QSystemTrayIcon, QMenu, QAction, QTimeEdit,
-    QStyle, QDialog, QSpinBox, QSizePolicy,
+    QStyle, QStyleOptionComboBox, QDialog, QSpinBox, QSizePolicy,
 )
 from PyQt5.QtCore import (Qt, QDate, QThread, pyqtSignal, QTimer, QTime, QSize,
-                          QPropertyAnimation, QRect, QEasingCurve, QUrl)
+                          QPropertyAnimation, QRect, QEasingCurve, QUrl, QPoint)
 from PyQt5.QtNetwork import QLocalServer, QLocalSocket
-from PyQt5.QtGui import QFont, QColor, QIcon, QPainter, QDesktopServices
+from PyQt5.QtGui import QFont, QColor, QIcon, QPainter, QPolygon, QDesktopServices
 
 # ─────────────────────────────────────────────
 #  常量
@@ -1173,17 +1173,20 @@ QLineEdit:focus, QSpinBox:focus, QComboBox:focus, QDateEdit:focus, QTimeEdit:foc
 }
 QLineEdit:disabled { background: #F6F7FB; color: #9CA3AF; }
 
-/* ── 下拉列表 ── */
+/* ── 下拉列表（与设计稿 theme_modern.qss 严格一致）── */
+QComboBox {
+    background: #FFFFFF;
+    color: #3A4050;
+    min-height: 34px;
+    padding: 0 10px;
+}
 QComboBox::drop-down {
     width: 24px;
     border: none;
-    border-left: 1px solid #E8EAF0;
-    border-top-right-radius: 8px;
-    border-bottom-right-radius: 8px;
-    background: transparent;
 }
-/* 不使用自定义 down-arrow 图标，保留系统默认箭头；
-   自定义 image 在 Windows + Fusion 下会与默认箭头叠加成双箭头。 */
+QComboBox::down-arrow {
+    image: none;
+}
 QComboBox QAbstractItemView {
     background: #FFFFFF;
     border: 1px solid #E8EAF0;
@@ -1622,6 +1625,43 @@ class _SignalLabel(QLabel):
     def setText(self, text):
         super().setText(text)
         self.textSet.emit(str(text))
+
+
+class _StyledComboBox(QComboBox):
+    """按 UI 设计稿绘制下拉箭头的 QComboBox。
+
+    Qt Fusion 风格下 QSS 的 `image:` 会被默认箭头叠加，而纯 CSS border 三角形
+    在 QComboBox::down-arrow 子控件里会被画成矩形条。本类直接接管 paintEvent 末尾
+    的箭头绘制：先让 Qt 正常绘制（含默认箭头），再用背景色覆盖箭头区域，最后画一个
+    设计稿同款的灰色等腰三角形（底边 8px、高 5px、颜色 #6B7280）。
+    """
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        opt = QStyleOptionComboBox()
+        self.initStyleOption(opt)
+        sc_rect = self.style().subControlRect(
+            QStyle.CC_ComboBox, opt, QStyle.SC_ComboBoxArrow, self)
+        if not sc_rect.isValid():
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        # 用控件背景色覆盖默认箭头区域
+        painter.fillRect(sc_rect, self.palette().base())
+
+        # 在箭头区域中心绘制灰色三角形
+        cx = sc_rect.x() + sc_rect.width() // 2
+        cy = sc_rect.y() + sc_rect.height() // 2
+        triangle = QPolygon([
+            QPoint(cx - 4, cy - 2),
+            QPoint(cx + 4, cy - 2),
+            QPoint(cx, cy + 3),
+        ])
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#6B7280"))
+        painter.drawPolygon(triangle)
+        painter.end()
 
 
 # ─────────────────────────────────────────────
@@ -2514,7 +2554,7 @@ class MainWindow(QMainWindow):
         ctrl_hb.addWidget(seg)
 
         # 日期下拉
-        self.combo_date = QComboBox()
+        self.combo_date = _StyledComboBox()
         self.combo_date.setMinimumWidth(100)
         self._fill_date_combo()
         self.combo_date.currentIndexChanged.connect(self._on_date_combo_changed)
@@ -2524,14 +2564,14 @@ class MainWindow(QMainWindow):
         lbl_ot = QLabel("加班")
         lbl_ot.setObjectName("detailKey")
         ctrl_hb.addWidget(lbl_ot)
-        self.combo_ot_h = QComboBox()
+        self.combo_ot_h = _StyledComboBox()
         self.combo_ot_h.addItems([str(i) for i in range(13)])
         self.combo_ot_h.setFixedWidth(60)
         ctrl_hb.addWidget(self.combo_ot_h)
         lbl_h = QLabel("时")
         lbl_h.setObjectName("detailKey")
         ctrl_hb.addWidget(lbl_h)
-        self.combo_ot_m = QComboBox()
+        self.combo_ot_m = _StyledComboBox()
         self.combo_ot_m.addItems(["0", "15", "30", "45"])
         self.combo_ot_m.setFixedWidth(60)
         ctrl_hb.addWidget(self.combo_ot_m)
