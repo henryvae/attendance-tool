@@ -2726,13 +2726,19 @@ class MainWindow(QMainWindow):
         lvb.setContentsMargins(16, 16, 16, 16)
         lvb.setSpacing(4)
 
-        # card-head：标题 + 迟到/早退徽章
+        # card-head：标题 + 大小周提示 + 迟到/早退徽章
         head = QHBoxLayout()
         head.setSpacing(0)
         lbl_sec1 = QLabel("今日考勤详情")
         lbl_sec1.setObjectName("sectionTitle")
         head.addWidget(lbl_sec1)
         head.addStretch()
+        self._lbl_week_hint = QLabel("")
+        self._lbl_week_hint.setObjectName("weekHint")
+        self._lbl_week_hint.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self._lbl_week_hint.setContentsMargins(0, 0, 8, 0)
+        self._lbl_week_hint.setVisible(False)
+        head.addWidget(self._lbl_week_hint)
         self._lbl_late_badge = QLabel("迟到 ×0")
         self._lbl_late_badge.setObjectName("badgeRed")
         head.addWidget(self._lbl_late_badge)
@@ -2858,18 +2864,13 @@ class MainWindow(QMainWindow):
         tvb = QVBoxLayout(tl_card)
         tvb.setContentsMargins(16, 16, 16, 16)
         tvb.setSpacing(10)
-        # 标题行：打卡时间线 + 大小周提示
+        # 标题行：打卡时间线
         tl_head = QHBoxLayout()
         tl_head.setSpacing(8)
         lbl_tl = QLabel("打卡时间线")
         lbl_tl.setObjectName("sectionTitle")
         tl_head.addWidget(lbl_tl)
         tl_head.addStretch()
-        self._lbl_week_hint = QLabel("")
-        self._lbl_week_hint.setObjectName("weekHint")
-        self._lbl_week_hint.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self._lbl_week_hint.setVisible(False)
-        tl_head.addWidget(self._lbl_week_hint)
         tvb.addLayout(tl_head)
 
         self._timeline_rows = []
