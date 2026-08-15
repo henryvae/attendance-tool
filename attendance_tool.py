@@ -138,6 +138,25 @@ def _force_kill_browser_drivers():
     BROWSER_DRIVER_PIDS.clear()
 
 
+def _force_exit_process(exit_code=0):
+    """强制结束本进程：先清理 Playwright 浏览器驱动，再立即 os._exit。
+    用于登录窗口关闭、托盘退出等必须立即终止后台进程的场景。"""
+    try:
+        _force_kill_browser_drivers()
+    except Exception:
+        pass
+    try:
+        # 使用 taskkill /T 结束本进程树（Windows 兜底，防止 os._exit 后子进程残留）
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(os.getpid())],
+                           capture_output=True, timeout=5,
+                           creationflags=_NO_WINDOW_FLAGS)
+    except Exception:
+        pass
+    # 最后兜底：直接退出当前进程
+    os._exit(exit_code)
+
+
 async def _launch_browser(p, **launch_kwargs):
     """启动浏览器并记录其驱动(node)进程 PID，便于 close 卡死时强杀。
     返回 browser 对象。"""
@@ -2124,14 +2143,15 @@ class LoginWindow(QWidget):
     def keyPressEvent(self, event):
         # Esc 退出程序（与关闭按钮行为一致：退出后台进程）
         if event.key() == Qt.Key_Escape:
-            QApplication.instance().quit()
+            event.accept()
+            _force_exit_process(0)
         else:
             super().keyPressEvent(event)
 
     def closeEvent(self, event):
-        """关闭按钮 = 退出后台进程（彻底退出程序）"""
+        """关闭按钮 = 强制退出后台进程（彻底退出程序，不依赖事件循环）"""
         event.accept()
-        QApplication.instance().quit()
+        _force_exit_process(0)
 
 
 # ─────────────────────────────────────────────
@@ -4259,6 +4279,13 @@ class MainWindow(QMainWindow):
         )
         if reply == QMessageBox.Yes:
             self._is_logging_out = True  # 设置标志，绕过closeEvent对话框
+            # 返回登录界面前先停止后台抓取并清理浏览器子进程
+            for _w in (getattr(self, "_worker", None),
+                       getattr(self, "_avatar_worker", None)):
+                if _w is not None and _w.isRunning():
+                    _w.quit()
+                    _w.wait(1500)
+            _force_kill_browser_drivers()
             # 返回登录界面而不是关闭程序
             if self.login_window:
                 self.login_window.show()
@@ -4267,18 +4294,17 @@ class MainWindow(QMainWindow):
     def _quit_app(self):
         """从托盘菜单退出程序（彻底关闭后台进程）"""
         self._is_logging_out = True  # 绕过 closeEvent 的最小化到托盘逻辑
-        # 停止可能存在的后台抓取线程，避免进程在退出时挂起
+        # 停止可能存在的后台抓取线程
         for _w in (getattr(self, "_worker", None),
                    getattr(self, "_avatar_worker", None)):
             if _w is not None and _w.isRunning():
                 _w.quit()
                 _w.wait(1500)
-        # 隐藏托盘图标并退出事件循环
+        # 隐藏托盘图标
         if getattr(self, "tray_icon", None):
             self.tray_icon.hide()
-        QApplication.instance().quit()
-        # 兜底：若事件循环因故未能退出，0.8s 后强制结束进程
-        QTimer.singleShot(800, lambda: os._exit(0))
+        # 立即强制结束本进程（避免事件循环或 Playwright 子进程导致残留）
+        _force_exit_process(0)
 
     def _open_config(self):
         """打开上下班配置弹窗"""
