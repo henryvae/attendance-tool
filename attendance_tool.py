@@ -1174,13 +1174,19 @@ QLineEdit:focus, QSpinBox:focus, QComboBox:focus, QDateEdit:focus, QTimeEdit:foc
 QLineEdit:disabled { background: #F6F7FB; color: #9CA3AF; }
 
 /* ── 下拉列表 ── */
-QComboBox::drop-down { width: 24px; border: none; }
+QComboBox::drop-down {
+    width: 24px;
+    border: none;
+    border-left: 1px solid #E8EAF0;
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+    background: transparent;
+}
 QComboBox::down-arrow {
-    image: none;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 5px solid #6B7280;
-    margin-right: 8px;
+    image: url(__ARROW_DOWN_GRAY__);
+}
+QComboBox:hover::down-arrow, QComboBox:focus::down-arrow {
+    image: url(__ARROW_DOWN_PRIMARY__);
 }
 QComboBox QAbstractItemView {
     background: #FFFFFF;
@@ -1200,6 +1206,24 @@ QComboBox QAbstractItemView::item:hover {
     background: #EDF0FE;
     color: #4F6BF6;
 }
+
+/* ── 数字微调框（下班提醒提前量）── */
+QSpinBox {
+    padding-right: 22px;
+}
+QSpinBox::up-button, QSpinBox::down-button {
+    width: 22px;
+    background: transparent;
+    border: none;
+    border-left: 1px solid #E8EAF0;
+    subcontrol-origin: padding;
+}
+QSpinBox::up-button { subcontrol-position: top right; border-top-right-radius: 8px; }
+QSpinBox::down-button { subcontrol-position: bottom right; border-bottom-right-radius: 8px; }
+QSpinBox::up-arrow { image: url(__ARROW_UP_GRAY__); }
+QSpinBox::down-arrow { image: url(__ARROW_DOWN_GRAY__); }
+QSpinBox:hover::up-arrow, QSpinBox:focus::up-arrow { image: url(__ARROW_UP_PRIMARY__); }
+QSpinBox:hover::down-arrow, QSpinBox:focus::down-arrow { image: url(__ARROW_DOWN_PRIMARY__); }
 
 /* ── 按钮 ── */
 QPushButton {
@@ -1513,6 +1537,46 @@ def _white_check_icon_path():
     with open(icon_path, "wb") as f:
         f.write(ba.data())
     return icon_path
+
+
+def _svg_arrow_icon_path(direction="down", color="#6B7280", size=14):
+    """生成箭头 SVG 图标到缓存目录，返回本地文件路径，供 QSS `image:` 属性使用。
+    direction: down | up
+    """
+    cache_dir = os.path.join(os.path.expanduser("~"), ".attendance_tool_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    icon_path = os.path.join(cache_dir, f"arrow_{direction}_{color.replace('#', '')}_{size}.svg")
+    if os.path.exists(icon_path):
+        return icon_path
+
+    points = "6 9 12 15 18 9" if direction == "down" else "6 15 12 9 18 15"
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" '
+        f'viewBox="0 0 24 24" fill="none" stroke="{color}" stroke-width="2.5" '
+        f'stroke-linecap="round" stroke-linejoin="round"><polyline points="{points}"/></svg>'
+    )
+    with open(icon_path, "w", encoding="utf-8") as f:
+        f.write(svg)
+    return icon_path
+
+
+# 预生成 QSS 会用到的箭头图标路径（在样式字符串中按占位符替换）
+_ARROW_DOWN_GRAY = _svg_arrow_icon_path("down", "#6B7280", 14)
+_ARROW_DOWN_PRIMARY = _svg_arrow_icon_path("down", "#4F6BF6", 14)
+_ARROW_UP_GRAY = _svg_arrow_icon_path("up", "#6B7280", 14)
+_ARROW_UP_PRIMARY = _svg_arrow_icon_path("up", "#4F6BF6", 14)
+
+
+def _inject_style_icons(style_str):
+    """把样式表中的图标占位符替换为本地 SVG 文件 URL。
+    Qt QSS 的 image: url() 需要本地文件路径，且用正斜杠。"""
+    def file_url(path):
+        return "file:///" + path.replace(os.sep, "/")
+    return (style_str
+            .replace("__ARROW_DOWN_GRAY__", file_url(_ARROW_DOWN_GRAY))
+            .replace("__ARROW_DOWN_PRIMARY__", file_url(_ARROW_DOWN_PRIMARY))
+            .replace("__ARROW_UP_GRAY__", file_url(_ARROW_UP_GRAY))
+            .replace("__ARROW_UP_PRIMARY__", file_url(_ARROW_UP_PRIMARY)))
 
 
 class _SignalLabel(QLabel):
@@ -4107,7 +4171,7 @@ def main():
         app = QApplication(sys.argv)
         app.setApplicationName("考勤管理系统")
         app.setStyle("Fusion")
-        app.setStyleSheet(STYLE_MODERN)  # 现代简约主题（v108：进一步压缩登录窗四周空白）
+        app.setStyleSheet(_inject_style_icons(STYLE_MODERN))  # 现代简约主题（v108：进一步压缩登录窗四周空白）
         app.setFont(QFont("Microsoft YaHei", 10))
         # 防止关闭所有窗口时自动退出（程序生命周期由托盘图标控制）
         app.setQuitOnLastWindowClosed(False)
