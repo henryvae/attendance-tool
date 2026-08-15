@@ -1677,7 +1677,7 @@ class LoginWindow(QWidget):
         self.setFixedWidth(360)
         self.setFixedHeight(460)
         # 登录窗：保留系统标题栏（最小化/关闭按钮，去掉最大化），渐变背景由 root 承担
-        self.setWindowFlags(Qt.Window | Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint)
+        self.setWindowFlags(Qt.Window | Qt.CustomizeWindowHint | Qt.WindowTitleHint | Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint)
         # 生成白色对勾图标文件，QSS 的 image: 属性只接受本地文件路径
         self.setStyleSheet(LOGIN_BG_QSS.replace(
             "{check_icon_path}", _white_check_icon_path().replace("\\", "/")))
