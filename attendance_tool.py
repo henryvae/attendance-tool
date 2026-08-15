@@ -1597,15 +1597,17 @@ _injected_style_cache = None
 
 
 def _inject_style_icons(style_str):
-    """把样式表中的图标占位符替换为本地 PNG 文件 URL。
+    """把样式表中的图标占位符替换为本地 PNG 文件路径。
 
+    实测（test_arrow_ui.py 像素分析）：Windows + PyQt5 下 QSS 的 url() 只认
+    正斜杠纯路径（C:/Users/...），带 file:/// 前缀或反斜杠均不渲染（空白）。
     使用 PNG 避免打包后缺少 Qt SVG 插件导致图标空白；缓存结果避免重复生成。"""
     global _injected_style_cache
     if _injected_style_cache is not None:
         return _injected_style_cache
 
     def file_url(path):
-        return "file:///" + path.replace(os.sep, "/")
+        return path.replace(os.sep, "/")
 
     _injected_style_cache = (style_str
         .replace("__ARROW_DOWN_GRAY__", file_url(_arrow_icon_path("down", "#6B7280", 14)))
