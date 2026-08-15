@@ -2821,7 +2821,7 @@ class MainWindow(QMainWindow):
         self.spin_remind = QSpinBox()
         self.spin_remind.setRange(0, 60)
         self.spin_remind.setSingleStep(5)
-        self.spin_remind.setFixedWidth(60)
+        self.spin_remind.setFixedWidth(70)
         self.spin_remind.setAlignment(Qt.AlignCenter)
         row_rmd.addWidget(self.spin_remind)
         lbl_min = QLabel("分钟")
