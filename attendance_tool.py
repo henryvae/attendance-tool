@@ -21,7 +21,20 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v124"
+def _calver_version(fmt="%Y.%m.%d-%H.%M"):
+    """按 CalVer（日历版本）规范生成版本号：v年.月.日-时.分。
+    参考 calver 库（setuptools 插件）的默认格式 %Y.%m.%d 扩展而来。
+    打包后取 exe 文件修改时间（= 构建时刻），版本号固定不变；
+    源码运行时取当前时间。"""
+    if getattr(sys, "frozen", False):
+        try:
+            ts = os.path.getmtime(sys.executable)
+            return "v" + datetime.datetime.fromtimestamp(ts).strftime(fmt)
+        except Exception:
+            pass
+    return "v" + datetime.datetime.now().strftime(fmt)
+
+APP_VERSION = _calver_version()   # CalVer，如 v2026.08.15-08.18
 import json
 import asyncio
 import threading
