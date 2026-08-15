@@ -1208,24 +1208,22 @@ QComboBox QAbstractItemView::item:hover {
 
 /* ── 数字微调框（下班提醒提前量）── */
 QSpinBox {
-    padding-right: 22px;
+    padding-right: 28px;
 }
 QSpinBox::up-button, QSpinBox::down-button {
-    width: 22px;
-    background: transparent;
+    width: 28px;
+    background: #F3F4F6;
     border: none;
     border-left: 1px solid #E8EAF0;
     subcontrol-origin: padding;
 }
 QSpinBox::up-button { subcontrol-position: top right; border-top-right-radius: 8px; }
 QSpinBox::down-button { subcontrol-position: bottom right; border-bottom-right-radius: 8px; }
+QSpinBox::up-button:hover, QSpinBox::down-button:hover { background: #E5E7EB; }
+QSpinBox::up-button:pressed, QSpinBox::down-button:pressed { background: #D1D5DB; }
 QSpinBox::up-arrow, QSpinBox::down-arrow {
     width: 10px;
     height: 6px;
-}
-QSpinBox:hover::up-arrow, QSpinBox:focus::up-arrow,
-QSpinBox:hover::down-arrow, QSpinBox:focus::down-arrow {
-    /* 使用 Qt 默认箭头，不加载自定义 PNG，避免箭头错位到数字区域 */
 }
 
 /* ── 按钮 ── */
