@@ -4169,16 +4169,16 @@ class MainWindow(QMainWindow):
         return f"{h:02d}:{m:02d}"
 
     def _update_week_hint(self, target_date):
-        """根据下拉框选中的日期，显示单双周（奇数周/偶数周）提示，周一~周日都显示"""
+        """根据下拉框选中的日期，显示大小周提示（奇数周=小周上班，偶数周=大周休息），周一~周日都显示"""
         if not hasattr(self, '_lbl_week_hint'):
             return
         week_num = target_date.isocalendar()[1]
         is_odd = (week_num % 2 != 0)
         if is_odd:
-            text = f"本周 · 奇数周（第{week_num}周）"
+            text = "本周 · 小周（上班）"
             rest = "false"
         else:
-            text = f"本周 · 偶数周（第{week_num}周）"
+            text = "本周 · 大周（休息）"
             rest = "true"
 
         self._lbl_week_hint.setText(text)
