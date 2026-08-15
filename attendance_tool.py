@@ -1773,11 +1773,11 @@ class LoginWindow(QWidget):
 
         # ── 自定义标题栏（无边框窗口使用）：拖动窗口 + 最小化/关闭 ──
         title_bar = QWidget()
-        title_bar.setFixedHeight(32)
+        title_bar.setFixedHeight(40)
         title_bar.setCursor(Qt.ArrowCursor)
         title_lay = QHBoxLayout(title_bar)
-        title_lay.setContentsMargins(14, 0, 8, 0)
-        title_lay.setSpacing(4)
+        title_lay.setContentsMargins(14, 0, 12, 0)
+        title_lay.setSpacing(6)
 
         title_lbl = QLabel("考勤管理系统 · 登录")
         title_lbl.setStyleSheet(
@@ -1787,11 +1787,11 @@ class LoginWindow(QWidget):
 
         def _make_title_btn(text, hover_color):
             btn = QPushButton(text)
-            btn.setFixedSize(28, 22)
+            btn.setFixedSize(38, 30)
             btn.setCursor(Qt.PointingHandCursor)
             btn.setStyleSheet(
                 f"QPushButton {{ color: #6B7280; background: transparent;"
-                f" border: none; border-radius: 4px; font-size: 13px; }}"
+                f" border: none; border-radius: 6px; font-size: 16px; }}"
                 f"QPushButton:hover {{ color: {hover_color}; background: rgba(0,0,0,0.05); }}"
                 f"QPushButton:pressed {{ background: rgba(0,0,0,0.08); }}")
             return btn
