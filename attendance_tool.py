@@ -2629,10 +2629,19 @@ class MainWindow(QMainWindow):
         self._lbl_auto_refresh.setObjectName("topBarHint")
         ctrl_hb.addWidget(self._lbl_auto_refresh)
 
-        # 立即刷新
-        btn_refresh = QPushButton("\u21BB 刷新")
+        # 立即刷新（图标与设计稿一致：⟳ U+27F3）
+        btn_refresh = QPushButton("\u27F3 刷新")
         btn_refresh.setObjectName("btnPrimary")
         btn_refresh.setFixedHeight(34)
+        btn_refresh.setStyleSheet(
+            "QPushButton#btnPrimary {"
+            " background: #4F6BF6; color: #FFFFFF; border: none; border-radius: 8px;"
+            " font-weight: 600; padding: 9px 20px;"
+            " font-family: \"Segoe UI Symbol\", \"Segoe UI Emoji\", \"Arial Unicode MS\", sans-serif; }"
+            "QPushButton#btnPrimary:hover { background: #4358E0; }"
+            "QPushButton#btnPrimary:pressed { background: #3B4FD8; }"
+            "QPushButton#btnPrimary:disabled { background: #A5B4FB; color: #FFFFFF; }"
+        )
         btn_refresh.clicked.connect(self._fetch_data)
         ctrl_hb.addWidget(btn_refresh)
 
