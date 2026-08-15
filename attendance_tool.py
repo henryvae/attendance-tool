@@ -48,7 +48,7 @@ from PyQt5.QtWidgets import (
     QHeaderView, QComboBox, QProgressBar,
     QAbstractItemView, QFileDialog, QCheckBox, QStackedWidget,
     QSystemTrayIcon, QMenu, QAction, QTimeEdit,
-    QStyle, QDialog, QSpinBox, QSizePolicy,
+    QStyle, QStyleOptionComboBox, QDialog, QSpinBox, QSizePolicy,
 )
 from PyQt5.QtCore import (Qt, QDate, QThread, pyqtSignal, QTimer, QTime, QSize,
                           QPropertyAnimation, QRect, QEasingCurve, QUrl)
@@ -1626,6 +1626,46 @@ class _SignalLabel(QLabel):
     def setText(self, text):
         super().setText(text)
         self.textSet.emit(str(text))
+
+
+# ─────────────────────────────────────────────
+#  QComboBox 子类：消除默认小箭头，让 PNG 箭头独占显示
+#  实测（test_arrow_solution.py 像素分析）：PyQt5 + Fusion 风格下，
+#  即便 QSS 设了 QComboBox::down-arrow { image: ... }，默认小箭头依然
+#  在下拉按钮里被画出来，导致双箭头叠加。本类在 paintEvent 末尾用背景色
+#  覆盖默认箭头区域，再画 PNG 箭头，根治此问题。
+# ─────────────────────────────────────────────
+class _CleanComboBox(QComboBox):
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        # 延迟加载箭头图标（首次 paintEvent 时 QApplication 已存在）
+        try:
+            grey = _arrow_icon_path("down", "#6B7280", 14)
+            primary = _arrow_icon_path("down", "#4F6BF6", 14)
+        except Exception:
+            return
+        opt = QStyleOptionComboBox()
+        self.initStyleOption(opt)
+        sc_rect = self.style().subControlRect(
+            QStyle.CC_ComboBox, opt, QStyle.SC_ComboBoxArrow, self)
+        if not sc_rect.isValid():
+            return
+        # 用控件背景色覆盖默认箭头区域
+        painter = QPainter(self)
+        painter.fillRect(sc_rect, self.palette().base())
+        # 画 PNG 箭头（hover/focus 时用主色）
+        pix_path = primary if (self.hasFocus() or self.underMouse()) else grey
+        pix = QPixmap(pix_path)
+        if not pix.isNull():
+            x = sc_rect.x() + (sc_rect.width() - pix.width()) // 2
+            y = sc_rect.y() + (sc_rect.height() - pix.height()) // 2
+            painter.drawPixmap(x, y, pix)
+        painter.end()
+
+
+# monkey patch：用 _CleanComboBox 替换本模块的 QComboBox 引用，
+# 后续所有 QComboBox() 实例都是 _CleanComboBox，统一解决双箭头问题。
+QComboBox = _CleanComboBox
 
 
 # ─────────────────────────────────────────────
