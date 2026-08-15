@@ -1676,8 +1676,10 @@ class LoginWindow(QWidget):
         # 窗口即卡片：360×460 紧贴窗口、圆角 14px、四周零留边
         self.setFixedWidth(360)
         self.setFixedHeight(460)
-        # 登录窗：保留系统标题栏（最小化/关闭按钮，去掉最大化），渐变背景由 root 承担
-        self.setWindowFlags(Qt.Window | Qt.CustomizeWindowHint | Qt.WindowTitleHint | Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint)
+        # 登录窗：无边框 + 自定义标题栏（彻底去掉 Windows 11 的系统最大化/Snap 按钮）
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self._drag_pos = None
         # 生成白色对勾图标文件，QSS 的 image: 属性只接受本地文件路径
         self.setStyleSheet(LOGIN_BG_QSS.replace(
             "{check_icon_path}", _white_check_icon_path().replace("\\", "/")))
@@ -1768,6 +1770,59 @@ class LoginWindow(QWidget):
         cl = QVBoxLayout(self._card)
         cl.setContentsMargins(28, 0, 28, 24)
         cl.setSpacing(0)
+
+        # ── 自定义标题栏（无边框窗口使用）：拖动窗口 + 最小化/关闭 ──
+        title_bar = QWidget()
+        title_bar.setFixedHeight(32)
+        title_bar.setCursor(Qt.ArrowCursor)
+        title_lay = QHBoxLayout(title_bar)
+        title_lay.setContentsMargins(14, 0, 8, 0)
+        title_lay.setSpacing(4)
+
+        title_lbl = QLabel("考勤管理系统 · 登录")
+        title_lbl.setStyleSheet(
+            "font-size: 12px; color: #6B7280; background: transparent;")
+        title_lay.addWidget(title_lbl)
+        title_lay.addStretch()
+
+        def _make_title_btn(text, hover_color):
+            btn = QPushButton(text)
+            btn.setFixedSize(28, 22)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(
+                f"QPushButton {{ color: #6B7280; background: transparent;"
+                f" border: none; border-radius: 4px; font-size: 13px; }}"
+                f"QPushButton:hover {{ color: {hover_color}; background: rgba(0,0,0,0.05); }}"
+                f"QPushButton:pressed {{ background: rgba(0,0,0,0.08); }}")
+            return btn
+
+        btn_min = _make_title_btn("−", "#4F6BF6")
+        btn_min.setToolTip("最小化")
+        btn_min.clicked.connect(self.showMinimized)
+        title_lay.addWidget(btn_min)
+
+        btn_close = _make_title_btn("×", "#EF4444")
+        btn_close.setToolTip("关闭")
+        btn_close.clicked.connect(self.close)
+        title_lay.addWidget(btn_close)
+
+        # 通过标题栏拖动无边框窗口
+        win_ref = self
+        def _title_mouse_press(event):
+            if event.button() == Qt.LeftButton:
+                win_ref._drag_pos = event.globalPos() - win_ref.frameGeometry().topLeft()
+                event.accept()
+        def _title_mouse_move(event):
+            if win_ref._drag_pos is not None and event.buttons() == Qt.LeftButton:
+                win_ref.move(event.globalPos() - win_ref._drag_pos)
+                event.accept()
+        def _title_mouse_release(event):
+            win_ref._drag_pos = None
+        title_bar.mousePressEvent = _title_mouse_press
+        title_bar.mouseMoveEvent = _title_mouse_move
+        title_bar.mouseReleaseEvent = _title_mouse_release
+
+        cl.addWidget(title_bar)
 
         # ── 顶部 4px 主色渐变装饰条（贴窗口最顶，与卡片同圆角） ──
         top_bar = QFrame()
