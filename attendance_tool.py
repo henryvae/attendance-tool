@@ -2854,45 +2854,8 @@ class MainWindow(QMainWindow):
         lvb.addStretch()
         dual.addWidget(left, stretch=3)
 
-        # 右栏
-        right = QVBoxLayout()
-        right.setSpacing(14)
-
-        # 打卡时间线
-        tl_card = QFrame()
-        tl_card.setObjectName("card")
-        tvb = QVBoxLayout(tl_card)
-        tvb.setContentsMargins(16, 16, 16, 16)
-        tvb.setSpacing(10)
-        # 标题行：打卡时间线
-        tl_head = QHBoxLayout()
-        tl_head.setSpacing(8)
-        lbl_tl = QLabel("打卡时间线")
-        lbl_tl.setObjectName("sectionTitle")
-        tl_head.addWidget(lbl_tl)
-        tl_head.addStretch()
-        tvb.addLayout(tl_head)
-
-        self._timeline_rows = []
-        for i in range(4):
-            row = QHBoxLayout()
-            row.setSpacing(10)
-            dot = QFrame()
-            dot.setObjectName("timelineDotMuted")
-            dot.setFixedSize(8, 8)
-            row.addWidget(dot, 0, Qt.AlignVCenter)
-            tl_time = QLabel("--")
-            tl_time.setObjectName("tlTime")
-            row.addWidget(tl_time)
-            tl_lbl = QLabel("")
-            tl_lbl.setObjectName("tlLabel")
-            row.addWidget(tl_lbl)
-            row.addStretch()
-            tvb.addLayout(row)
-            self._timeline_rows.append((dot, tl_time, tl_lbl))
-        right.addWidget(tl_card)
-
-        dual.addLayout(right, stretch=2)
+        # 右栏（打卡时间线已删除）
+        # 原本放置打卡时间线卡片的 right 布局已移除，今日考勤详情卡片自动占满整行
         vb.addLayout(dual, stretch=1)
 
         return page
@@ -2919,33 +2882,13 @@ class MainWindow(QMainWindow):
             json.dump(data, f, ensure_ascii=False, indent=2)
 
     def _connect_sync_signals(self):
-        """把核心数据标签的更新同步到时间线 / 控制行自动刷新"""
-        # 打卡记录 → 时间线
-        self._detail_lines["clock_records"].textSet.connect(self._update_timeline)
-        self._update_timeline(self._detail_lines["clock_records"].text())
+        """把刷新倒计时同步到控制行自动刷新"""
         # 刷新倒计时 → 控制行"自动刷新 mm:ss"
         self._lbl_countdown.textSet.connect(self._on_countdown_changed)
         self._on_countdown_changed(self._lbl_countdown.text())
 
     def _on_countdown_changed(self, text):
         self._lbl_auto_refresh.setText(f"自动刷新 {text}")
-
-    def _update_timeline(self, text):
-        """根据打卡记录文本更新时间线"""
-        parts = []
-        if text and str(text) != "--":
-            parts = [p.strip() for p in str(text).replace("，", ",").split(",") if p.strip()]
-        labels = ["上班打卡", "午休下班", "午休上班", "下班打卡"]
-        for i, (dot, tl_time, tl_lbl) in enumerate(self._timeline_rows):
-            if i < len(parts):
-                tl_time.setText(parts[i])
-                dot.setObjectName("timelineDotIn" if i % 2 == 0 else "timelineDotOut")
-            else:
-                tl_time.setText("--")
-                dot.setObjectName("timelineDotMuted")
-            tl_lbl.setText(labels[i] if i < len(labels) else "")
-            dot.style().unpolish(dot)
-            dot.style().polish(dot)
 
     # ═══════════════════════════════════════
     #  第 1 页：考勤记录
