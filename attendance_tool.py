@@ -2756,6 +2756,70 @@ class MainWindow(QMainWindow):
         _add_detail_row("ot_holiday", "假加 (节假日)", "detailValMono")
         _add_detail_row("detail_ot_cycle_sum", "合计加班", "valuePrimary")
 
+        # ── 分隔线 ──
+        sep_rmd = QFrame()
+        sep_rmd.setObjectName("hsep")
+        lvb.addWidget(sep_rmd)
+
+        # ── 下班提醒（移到今日考勤详情卡片底部）──
+        row_rmd = QHBoxLayout()
+        row_rmd.setContentsMargins(0, 4, 0, 4)
+        row_rmd.setSpacing(8)
+
+        lbl_bell = QLabel("🔔 下班提醒")
+        lbl_bell.setStyleSheet("font-size: 13px; font-weight: 600; color: #3A4050;")
+        row_rmd.addWidget(lbl_bell)
+
+        self.cb_remind = QCheckBox()
+        self.cb_remind.setObjectName("cbRemind")
+        self.cb_remind.setCursor(Qt.PointingHandCursor)
+        _chk_path = _white_check_icon_path().replace("\\", "/")
+        self.cb_remind.setStyleSheet(
+            f"QCheckBox#cbRemind::indicator:checked {{ image: url(\"{_chk_path}\"); }}"
+        )
+        row_rmd.addWidget(self.cb_remind)
+
+        self.combo_remind = _StyledComboBox()
+        for _v in (0, 5, 10, 15, 20, 30, 45, 60):
+            self.combo_remind.addItem(str(_v), _v)
+        self.combo_remind.setFixedWidth(64)
+        row_rmd.addWidget(self.combo_remind)
+
+        lbl_min = QLabel("分钟前")
+        lbl_min.setStyleSheet("font-size: 12px; font-weight: 600; color: #9CA3AF;")
+        row_rmd.addWidget(lbl_min)
+
+        row_rmd.addStretch()
+
+        self.btn_test_remind = QPushButton("▶")
+        self.btn_test_remind.setObjectName("btnTestRemind")
+        self.btn_test_remind.setFixedSize(34, 34)
+        self.btn_test_remind.setToolTip("测试提醒")
+        self.btn_test_remind.setCursor(Qt.PointingHandCursor)
+        self.btn_test_remind.setStyleSheet(
+            "QPushButton#btnTestRemind {"
+            " border: 1px solid #E8EAF0; border-radius: 8px;"
+            " background: #FFFFFF; color: #6B7280; font-size: 14px; padding: 0;"
+            " font-family: \"Segoe UI Symbol\", \"Segoe UI Emoji\", \"Arial Unicode MS\", sans-serif; }"
+            "QPushButton#btnTestRemind:hover { color: #4F6BF6; border-color: #4F6BF6; background: #F5F7FF; }"
+            "QPushButton#btnTestRemind:pressed { background: #EDF0FE; }"
+        )
+        self.btn_test_remind.clicked.connect(self._manual_show_remind)
+        row_rmd.addWidget(self.btn_test_remind)
+
+        lvb.addLayout(row_rmd)
+
+        # 从配置加载提醒设置
+        cfg = self._load_work_config()
+        self.cb_remind.setChecked(cfg.get("remind_enabled", True))
+        _off = cfg.get("remind_offset", 5)
+        _idx = self.combo_remind.findData(_off)
+        if _idx < 0:
+            _idx = self.combo_remind.findData(5)
+        self.combo_remind.setCurrentIndex(_idx if _idx >= 0 else 0)
+        self.cb_remind.stateChanged.connect(self._save_remind_cfg)
+        self.combo_remind.currentIndexChanged.connect(self._save_remind_cfg)
+
         # 隐藏的刷新倒计时标签（保持与顶部控制行自动刷新同步）
         self._lbl_countdown = _SignalLabel("--")
         self._lbl_countdown.setObjectName("countdownBox")
@@ -2803,75 +2867,6 @@ class MainWindow(QMainWindow):
             tvb.addLayout(row)
             self._timeline_rows.append((dot, tl_time, tl_lbl))
         right.addWidget(tl_card)
-
-        # 下班提醒设置（按 UI 设计稿 570-578 行：铃铛标签 + 复选框 + 下拉框 + 分钟前 + 测试图标按钮）
-        rmd_card = QFrame()
-        rmd_card.setObjectName("card")
-        rvb = QVBoxLayout(rmd_card)
-        rvb.setContentsMargins(16, 16, 16, 16)
-        rvb.setSpacing(10)
-
-        row_rmd = QHBoxLayout()
-        row_rmd.setContentsMargins(4, 4, 4, 4)
-        row_rmd.setSpacing(8)
-
-        lbl_bell = QLabel("🔔 下班提醒")
-        lbl_bell.setStyleSheet("font-size: 13px; font-weight: 600; color: #3A4050;")
-        row_rmd.addWidget(lbl_bell)
-
-        self.cb_remind = QCheckBox()
-        self.cb_remind.setObjectName("cbRemind")
-        self.cb_remind.setCursor(Qt.PointingHandCursor)
-        # 勾选时显示白色对勾（与设计稿 accent-color:#4F6BF6 一致）
-        _chk_path = _white_check_icon_path().replace("\\", "/")
-        self.cb_remind.setStyleSheet(
-            f"QCheckBox#cbRemind::indicator:checked {{ image: url(\"{_chk_path}\"); }}"
-        )
-        row_rmd.addWidget(self.cb_remind)
-
-        self.combo_remind = _StyledComboBox()
-        for _v in (0, 5, 10, 15, 20, 30, 45, 60):
-            self.combo_remind.addItem(str(_v), _v)
-        self.combo_remind.setFixedWidth(64)
-        row_rmd.addWidget(self.combo_remind)
-
-        lbl_min = QLabel("分钟前")
-        lbl_min.setStyleSheet("font-size: 12px; font-weight: 600; color: #9CA3AF;")
-        row_rmd.addWidget(lbl_min)
-
-        row_rmd.addStretch()
-
-        self.btn_test_remind = QPushButton("▶")
-        self.btn_test_remind.setObjectName("btnTestRemind")
-        self.btn_test_remind.setFixedSize(34, 34)
-        self.btn_test_remind.setToolTip("测试提醒")
-        self.btn_test_remind.setCursor(Qt.PointingHandCursor)
-        self.btn_test_remind.setStyleSheet(
-            "QPushButton#btnTestRemind {"
-            " border: 1px solid #E8EAF0; border-radius: 8px;"
-            " background: #FFFFFF; color: #6B7280; font-size: 14px; padding: 0;"
-            " font-family: \"Segoe UI Symbol\", \"Segoe UI Emoji\", \"Arial Unicode MS\", sans-serif; }"
-            "QPushButton#btnTestRemind:hover { color: #4F6BF6; border-color: #4F6BF6; background: #F5F7FF; }"
-            "QPushButton#btnTestRemind:pressed { background: #EDF0FE; }"
-        )
-        self.btn_test_remind.clicked.connect(self._manual_show_remind)
-        row_rmd.addWidget(self.btn_test_remind)
-
-        rvb.addLayout(row_rmd)
-
-        # 从配置加载提醒设置
-        cfg = self._load_work_config()
-        self.cb_remind.setChecked(cfg.get("remind_enabled", True))
-        _off = cfg.get("remind_offset", 5)
-        _idx = self.combo_remind.findData(_off)
-        if _idx < 0:
-            _idx = self.combo_remind.findData(5)
-        self.combo_remind.setCurrentIndex(_idx if _idx >= 0 else 0)
-        self.cb_remind.stateChanged.connect(self._save_remind_cfg)
-        self.combo_remind.currentIndexChanged.connect(self._save_remind_cfg)
-
-        rvb.addStretch()
-        right.addWidget(rmd_card)
 
         dual.addLayout(right, stretch=2)
         vb.addLayout(dual, stretch=1)
