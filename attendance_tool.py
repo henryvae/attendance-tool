@@ -1219,10 +1219,10 @@ QSpinBox::up-button, QSpinBox::down-button {
 }
 QSpinBox::up-button { subcontrol-position: top right; border-top-right-radius: 8px; }
 QSpinBox::down-button { subcontrol-position: bottom right; border-bottom-right-radius: 8px; }
-QSpinBox::up-arrow { image: url(__ARROW_UP_GRAY__); }
-QSpinBox::down-arrow { image: url(__ARROW_DOWN_GRAY__); }
-QSpinBox:hover::up-arrow, QSpinBox:focus::up-arrow { image: url(__ARROW_UP_PRIMARY__); }
-QSpinBox:hover::down-arrow, QSpinBox:focus::down-arrow { image: url(__ARROW_DOWN_PRIMARY__); }
+QSpinBox::up-arrow { image: url(__ARROW_UP_GRAY__); subcontrol-position: center; }
+QSpinBox::down-arrow { image: url(__ARROW_DOWN_GRAY__); subcontrol-position: center; }
+QSpinBox:hover::up-arrow, QSpinBox:focus::up-arrow { image: url(__ARROW_UP_PRIMARY__); subcontrol-position: center; }
+QSpinBox:hover::down-arrow, QSpinBox:focus::down-arrow { image: url(__ARROW_DOWN_PRIMARY__); subcontrol-position: center; }
 
 /* ── 按钮 ── */
 QPushButton {
