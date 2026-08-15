@@ -1637,11 +1637,11 @@ class _SignalLabel(QLabel):
 # ─────────────────────────────────────────────
 class _CleanComboBox(QComboBox):
     def paintEvent(self, event):
+        from PyQt5.QtGui import QPixmap
         super().paintEvent(event)
         # 延迟加载箭头图标（首次 paintEvent 时 QApplication 已存在）
         try:
-            grey = _arrow_icon_path("down", "#6B7280", 14)
-            primary = _arrow_icon_path("down", "#4F6BF6", 14)
+            arrow_path = _arrow_icon_path("down", "#6B7280", 16)
         except Exception:
             return
         opt = QStyleOptionComboBox()
@@ -1653,9 +1653,8 @@ class _CleanComboBox(QComboBox):
         # 用控件背景色覆盖默认箭头区域
         painter = QPainter(self)
         painter.fillRect(sc_rect, self.palette().base())
-        # 画 PNG 箭头（hover/focus 时用主色）
-        pix_path = primary if (self.hasFocus() or self.underMouse()) else grey
-        pix = QPixmap(pix_path)
+        # 画 PNG 箭头（统一灰色，不随 focus/hover 变蓝，避免截图时两个下拉框都是蓝色）
+        pix = QPixmap(arrow_path)
         if not pix.isNull():
             x = sc_rect.x() + (sc_rect.width() - pix.width()) // 2
             y = sc_rect.y() + (sc_rect.height() - pix.height()) // 2
