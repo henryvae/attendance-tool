@@ -1663,9 +1663,9 @@ class _CleanComboBox(QComboBox):
         painter.end()
 
 
-# monkey patch：用 _CleanComboBox 替换本模块的 QComboBox 引用，
-# 后续所有 QComboBox() 实例都是 _CleanComboBox，统一解决双箭头问题。
-QComboBox = _CleanComboBox
+# 注意：不要全局 monkey patch，否则日期下拉框等默认样式正常的控件会丢箭头。
+# 哪里出现双箭头，就在哪里显式实例化 _CleanComboBox。
+# QComboBox = _CleanComboBox
 
 
 # ─────────────────────────────────────────────
@@ -2568,14 +2568,14 @@ class MainWindow(QMainWindow):
         lbl_ot = QLabel("加班")
         lbl_ot.setObjectName("detailKey")
         ctrl_hb.addWidget(lbl_ot)
-        self.combo_ot_h = QComboBox()
+        self.combo_ot_h = _CleanComboBox()
         self.combo_ot_h.addItems([str(i) for i in range(13)])
         self.combo_ot_h.setFixedWidth(60)
         ctrl_hb.addWidget(self.combo_ot_h)
         lbl_h = QLabel("时")
         lbl_h.setObjectName("detailKey")
         ctrl_hb.addWidget(lbl_h)
-        self.combo_ot_m = QComboBox()
+        self.combo_ot_m = _CleanComboBox()
         self.combo_ot_m.addItems(["0", "15", "30", "45"])
         self.combo_ot_m.setFixedWidth(60)
         ctrl_hb.addWidget(self.combo_ot_m)
