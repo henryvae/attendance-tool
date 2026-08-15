@@ -1206,26 +1206,6 @@ QComboBox QAbstractItemView::item:hover {
     color: #4F6BF6;
 }
 
-/* ── 数字微调框（下班提醒提前量）── */
-QSpinBox {
-    padding-right: 28px;
-}
-QSpinBox::up-button, QSpinBox::down-button {
-    width: 28px;
-    background: #F3F4F6;
-    border: none;
-    border-left: 1px solid #E8EAF0;
-    subcontrol-origin: padding;
-}
-QSpinBox::up-button { subcontrol-position: top right; border-top-right-radius: 8px; }
-QSpinBox::down-button { subcontrol-position: bottom right; border-bottom-right-radius: 8px; }
-QSpinBox::up-button:hover, QSpinBox::down-button:hover { background: #E5E7EB; }
-QSpinBox::up-button:pressed, QSpinBox::down-button:pressed { background: #D1D5DB; }
-QSpinBox::up-arrow, QSpinBox::down-arrow {
-    width: 10px;
-    height: 6px;
-}
-
 /* ── 按钮 ── */
 QPushButton {
     background: #FFFFFF;
@@ -2804,48 +2784,71 @@ class MainWindow(QMainWindow):
             self._timeline_rows.append((dot, tl_time, tl_lbl))
         right.addWidget(tl_card)
 
-        # 下班提醒设置
+        # 下班提醒设置（按 UI 设计稿 570-578 行：铃铛标签 + 复选框 + 下拉框 + 分钟前 + 测试图标按钮）
         rmd_card = QFrame()
         rmd_card.setObjectName("card")
         rvb = QVBoxLayout(rmd_card)
         rvb.setContentsMargins(16, 16, 16, 16)
         rvb.setSpacing(10)
-        lbl_rmd = QLabel("下班提醒设置")
-        lbl_rmd.setObjectName("sectionTitle")
-        rvb.addWidget(lbl_rmd)
 
         row_rmd = QHBoxLayout()
         row_rmd.setContentsMargins(4, 4, 4, 4)
-        row_rmd.setSpacing(10)
-        lbl_r = QLabel("提前")
-        lbl_r.setObjectName("detailKey")
-        row_rmd.addWidget(lbl_r)
-        self.spin_remind = QSpinBox()
-        self.spin_remind.setRange(0, 60)
-        self.spin_remind.setSingleStep(5)
-        self.spin_remind.setFixedWidth(70)
-        self.spin_remind.setAlignment(Qt.AlignCenter)
-        row_rmd.addWidget(self.spin_remind)
-        lbl_min = QLabel("分钟")
-        lbl_min.setObjectName("detailKey")
-        row_rmd.addWidget(lbl_min)
-        self.cb_remind = QCheckBox("启用")
+        row_rmd.setSpacing(8)
+
+        lbl_bell = QLabel("🔔 下班提醒")
+        lbl_bell.setStyleSheet("font-size: 13px; font-weight: 600; color: #3A4050;")
+        row_rmd.addWidget(lbl_bell)
+
+        self.cb_remind = QCheckBox()
+        self.cb_remind.setObjectName("cbRemind")
+        self.cb_remind.setCursor(Qt.PointingHandCursor)
+        # 勾选时显示白色对勾（与设计稿 accent-color:#4F6BF6 一致）
+        _chk_path = _white_check_icon_path().replace("\\", "/")
+        self.cb_remind.setStyleSheet(
+            f"QCheckBox#cbRemind::indicator:checked {{ image: url(\"{_chk_path}\"); }}"
+        )
         row_rmd.addWidget(self.cb_remind)
-        self.btn_test_remind = QPushButton("测试")
-        self.btn_test_remind.setObjectName("btnPrimary")
-        self.btn_test_remind.setFixedHeight(28)
-        self.btn_test_remind.setFixedWidth(52)
+
+        self.combo_remind = _StyledComboBox()
+        for _v in (0, 5, 10, 15, 20, 30, 45, 60):
+            self.combo_remind.addItem(str(_v), _v)
+        self.combo_remind.setFixedWidth(64)
+        row_rmd.addWidget(self.combo_remind)
+
+        lbl_min = QLabel("分钟前")
+        lbl_min.setStyleSheet("font-size: 12px; font-weight: 600; color: #9CA3AF;")
+        row_rmd.addWidget(lbl_min)
+
+        row_rmd.addStretch()
+
+        self.btn_test_remind = QPushButton("▶")
+        self.btn_test_remind.setObjectName("btnTestRemind")
+        self.btn_test_remind.setFixedSize(34, 34)
+        self.btn_test_remind.setToolTip("测试提醒")
+        self.btn_test_remind.setCursor(Qt.PointingHandCursor)
+        self.btn_test_remind.setStyleSheet(
+            "QPushButton#btnTestRemind {"
+            " border: 1px solid #E8EAF0; border-radius: 8px;"
+            " background: #FFFFFF; color: #6B7280; font-size: 14px; padding: 0;"
+            " font-family: \"Segoe UI Symbol\", \"Segoe UI Emoji\", \"Arial Unicode MS\", sans-serif; }"
+            "QPushButton#btnTestRemind:hover { color: #4F6BF6; border-color: #4F6BF6; background: #F5F7FF; }"
+            "QPushButton#btnTestRemind:pressed { background: #EDF0FE; }"
+        )
         self.btn_test_remind.clicked.connect(self._manual_show_remind)
         row_rmd.addWidget(self.btn_test_remind)
-        row_rmd.addStretch()
+
         rvb.addLayout(row_rmd)
 
         # 从配置加载提醒设置
         cfg = self._load_work_config()
         self.cb_remind.setChecked(cfg.get("remind_enabled", True))
-        self.spin_remind.setValue(cfg.get("remind_offset", 5))
+        _off = cfg.get("remind_offset", 5)
+        _idx = self.combo_remind.findData(_off)
+        if _idx < 0:
+            _idx = self.combo_remind.findData(5)
+        self.combo_remind.setCurrentIndex(_idx if _idx >= 0 else 0)
         self.cb_remind.stateChanged.connect(self._save_remind_cfg)
-        self.spin_remind.valueChanged.connect(self._save_remind_cfg)
+        self.combo_remind.currentIndexChanged.connect(self._save_remind_cfg)
 
         rvb.addStretch()
         right.addWidget(rmd_card)
@@ -2872,7 +2875,7 @@ class MainWindow(QMainWindow):
         if "work_config" not in data:
             data["work_config"] = {}
         data["work_config"]["remind_enabled"] = self.cb_remind.isChecked()
-        data["work_config"]["remind_offset"] = self.spin_remind.value()
+        data["work_config"]["remind_offset"] = self.combo_remind.currentData()
         with open(cfg_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
@@ -3383,8 +3386,8 @@ class MainWindow(QMainWindow):
         now = datetime.datetime.now()
         now_min = now.hour * 60 + now.minute
 
-        # 获取提前提醒分钟数（SpinBox 设置值）
-        remind_offset = self.spin_remind.value() if hasattr(self, "spin_remind") else 5
+        # 获取提前提醒分钟数（下拉框设置值）
+        remind_offset = self.combo_remind.currentData() if hasattr(self, "combo_remind") else 5
 
         # 触发条件：当前时间 >= 应下班时间 - 提前分钟数（已到下班时间同样触发）
         trigger_min = should_out_min - remind_offset
