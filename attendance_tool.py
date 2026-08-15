@@ -1313,6 +1313,24 @@ QLabel#valueSuccess { color: #16A34A; font-weight: 700; }
 QLabel#valueWarning { color: #D97706; font-weight: 700; }
 QLabel#valueDanger { color: #DC2626; font-weight: 700; }
 
+/* ── 徽章（与 UI 设计稿 .badge 一致）── */
+QLabel#badgeRed {
+    color: #DC2626;
+    background: #FDEBEB;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 99px;
+}
+QLabel#badgeOrange {
+    color: #D97706;
+    background: #FEF3E2;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 99px;
+}
+
 /* ── 分割线 ── */
 QFrame#hsep { background: #E8EAF0; max-height: 1px; border: none; }
 
@@ -2689,74 +2707,59 @@ class MainWindow(QMainWindow):
         dual = QHBoxLayout()
         dual.setSpacing(14)
 
-        # 左卡：今日考勤详情
+        # 左卡：今日考勤详情（严格对齐 UI设计方案.html 第540-559行）
         left = QFrame()
         left.setObjectName("card")
         lvb = QVBoxLayout(left)
         lvb.setContentsMargins(16, 16, 16, 16)
-        lvb.setSpacing(10)
+        lvb.setSpacing(4)
 
+        # card-head：标题 + 迟到/早退徽章
+        head = QHBoxLayout()
+        head.setSpacing(0)
         lbl_sec1 = QLabel("今日考勤详情")
         lbl_sec1.setObjectName("sectionTitle")
-        lvb.addWidget(lbl_sec1)
+        head.addWidget(lbl_sec1)
+        head.addStretch()
+        self._lbl_late_badge = QLabel("迟到 ×0")
+        self._lbl_late_badge.setObjectName("badgeRed")
+        head.addWidget(self._lbl_late_badge)
+        self._lbl_early_badge = QLabel("早退 ×0")
+        self._lbl_early_badge.setObjectName("badgeOrange")
+        self._lbl_early_badge.setContentsMargins(6, 0, 0, 0)
+        head.addWidget(self._lbl_early_badge)
+        lvb.addLayout(head)
 
-        row_rec = QHBoxLayout()
-        row_rec.setSpacing(8)
-        lbl_k = QLabel("打卡记录")
-        lbl_k.setObjectName("detailKey")
-        row_rec.addWidget(lbl_k)
-        self._detail_lines["clock_records"] = _SignalLabel("--")
-        self._detail_lines["clock_records"].setObjectName("detailValMono")
-        row_rec.addWidget(self._detail_lines["clock_records"], stretch=1)
-        lvb.addLayout(row_rec)
+        # detail-rows：标签 + 值，值按设计稿着色
+        def _add_detail_row(key, label, value_obj_name, signal=False):
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 3, 0, 3)
+            row.setSpacing(8)
+            lbl_k = QLabel(label)
+            lbl_k.setObjectName("detailKey")
+            row.addWidget(lbl_k)
+            row.addStretch()
+            lbl_cls = _SignalLabel if signal else QLabel
+            lbl_v = lbl_cls("--")
+            lbl_v.setObjectName(value_obj_name)
+            row.addWidget(lbl_v)
+            lvb.addLayout(row)
+            self._detail_lines[key] = lbl_v
+            return lbl_v
 
-        row_ot = QHBoxLayout()
-        row_ot.setSpacing(16)
-        for key, label in [("ot_weekday", "平加(h)"), ("ot_weekend", "周加(h)"), ("ot_holiday", "假加(h)")]:
-            sub = QHBoxLayout()
-            sub.setSpacing(6)
-            lb = QLabel(label)
-            lb.setObjectName("detailKey")
-            sub.addWidget(lb)
-            self._detail_lines[key] = _SignalLabel("0")
-            self._detail_lines[key].setObjectName("detailValMono")
-            sub.addWidget(self._detail_lines[key])
-            row_ot.addLayout(sub)
-        row_ot.addStretch()
-        lvb.addLayout(row_ot)
+        _add_detail_row("clock_records", "打卡记录", "detailValMono", signal=True)
+        _add_detail_row("detail_should_out", "应下班时间", "valuePrimary")
+        _add_detail_row("detail_worked", "已工作时长", "valueSuccess")
+        _add_detail_row("detail_overtime", "已加班时长", "valueWarning")
+        _add_detail_row("ot_weekday", "平加 (工作日)", "detailValMono")
+        _add_detail_row("ot_weekend", "周加 (周末)", "detailValMono")
+        _add_detail_row("ot_holiday", "假加 (节假日)", "detailValMono")
+        _add_detail_row("detail_ot_cycle_sum", "合计加班", "valuePrimary")
 
-        lvb.addWidget(self._make_hsep())
-
-        row_counts = QHBoxLayout()
-        row_counts.setSpacing(8)
-        lbl_lk = QLabel("迟到次数")
-        lbl_lk.setObjectName("detailKey")
-        row_counts.addWidget(lbl_lk)
-        self._lbl_late = QLabel("0")
-        self._lbl_late.setObjectName("valueDanger")
-        row_counts.addWidget(self._lbl_late)
-        row_counts.addStretch()
-        lbl_ek = QLabel("早退次数")
-        lbl_ek.setObjectName("detailKey")
-        row_counts.addWidget(lbl_ek)
-        self._lbl_early = QLabel("0")
-        self._lbl_early.setObjectName("valueDanger")
-        row_counts.addWidget(self._lbl_early)
-        row_counts.addStretch()
-        lvb.addLayout(row_counts)
-
-        row_timer = QHBoxLayout()
-        row_timer.setSpacing(8)
-        lbl_tk = QLabel("刷新倒计时")
-        lbl_tk.setObjectName("detailKey")
-        row_timer.addWidget(lbl_tk)
+        # 隐藏的刷新倒计时标签（保持与顶部控制行自动刷新同步）
         self._lbl_countdown = _SignalLabel("--")
         self._lbl_countdown.setObjectName("countdownBox")
-        self._lbl_countdown.setFixedWidth(64)
-        self._lbl_countdown.setAlignment(Qt.AlignCenter)
-        row_timer.addWidget(self._lbl_countdown)
-        row_timer.addStretch()
-        lvb.addLayout(row_timer)
+        self._lbl_countdown.setVisible(False)
 
         # 失败重试提示
         self._lbl_retry = QLabel("")
@@ -4083,22 +4086,34 @@ class MainWindow(QMainWindow):
         # 更新右侧详情面板
         if hasattr(self, '_detail_lines'):
             self._detail_lines["clock_records"].setText(clock_records_str)
+            # 顶部指标卡
             self._detail_lines["should_out"].setText(should_out_time)
             self._detail_lines["worked"].setText(worked_time_str)
             self._detail_lines["overtime"].setText(overtime_str)
-            self._detail_lines["ot_weekday"].setText(self._format_ot_hours(ot_weekday))
-            self._detail_lines["ot_weekend"].setText(self._format_ot_hours(ot_weekend))
-            self._detail_lines["ot_holiday"].setText(self._format_ot_hours(ot_holiday))
             self._detail_lines["ot_cycle_sum"].setText(self._format_ot_hours(ot_cycle_sum))
+            # 左侧今日考勤详情卡片（带单位/颜色）
+            if "detail_should_out" in self._detail_lines:
+                self._detail_lines["detail_should_out"].setText(should_out_time)
+            if "detail_worked" in self._detail_lines:
+                self._detail_lines["detail_worked"].setText(worked_time_str)
+            if "detail_overtime" in self._detail_lines:
+                self._detail_lines["detail_overtime"].setText(overtime_str)
+            if "detail_ot_cycle_sum" in self._detail_lines:
+                self._detail_lines["detail_ot_cycle_sum"].setText(f"{self._format_ot_hours(ot_cycle_sum)} h")
+            self._detail_lines["ot_weekday"].setText(f"{self._format_ot_hours(ot_weekday)} h")
+            self._detail_lines["ot_weekend"].setText(f"{self._format_ot_hours(ot_weekend)} h")
+            self._detail_lines["ot_holiday"].setText(f"{self._format_ot_hours(ot_holiday)} h")
 
-        # 更新左侧迟到/早退次数
-        if hasattr(self, '_lbl_late'):
-            self._lbl_late.setText(str(int(late)))
+        # 更新左侧迟到/早退徽章（设计稿 card-head 中的 badge）
+        if hasattr(self, '_lbl_late_badge'):
+            self._lbl_late_badge.setText(f"迟到 ×{int(late)}")
+            self._lbl_late_badge.setVisible(late > 0)
         # 早退次数
         early_col = col_idx(["早退"])
         early, _ = sum_col(early_col)
-        if hasattr(self, '_lbl_early'):
-            self._lbl_early.setText(str(int(early)))
+        if hasattr(self, '_lbl_early_badge'):
+            self._lbl_early_badge.setText(f"早退 ×{int(early)}")
+            self._lbl_early_badge.setVisible(early > 0)
 
     def _parse_time_to_min(self, time_str):
         """将时间字符串转换为分钟数"""
