@@ -4265,10 +4265,20 @@ class MainWindow(QMainWindow):
             self.close()
 
     def _quit_app(self):
-        """直接从托盘或底部按钮退出程序（关闭进程）"""
-        self._is_logging_out = True  # 绕过closeEvent对话框
-        self.tray_icon.hide()
+        """从托盘菜单退出程序（彻底关闭后台进程）"""
+        self._is_logging_out = True  # 绕过 closeEvent 的最小化到托盘逻辑
+        # 停止可能存在的后台抓取线程，避免进程在退出时挂起
+        for _w in (getattr(self, "_worker", None),
+                   getattr(self, "_avatar_worker", None)):
+            if _w is not None and _w.isRunning():
+                _w.quit()
+                _w.wait(1500)
+        # 隐藏托盘图标并退出事件循环
+        if getattr(self, "tray_icon", None):
+            self.tray_icon.hide()
         QApplication.instance().quit()
+        # 兜底：若事件循环因故未能退出，0.8s 后强制结束进程
+        QTimer.singleShot(800, lambda: os._exit(0))
 
     def _open_config(self):
         """打开上下班配置弹窗"""
