@@ -4169,41 +4169,17 @@ class MainWindow(QMainWindow):
         return f"{h:02d}:{m:02d}"
 
     def _update_week_hint(self, target_date):
-        """根据日期和大小周配置更新打卡时间线大小周提示"""
+        """根据下拉框选中的日期，显示单双周（奇数周/偶数周）提示，周一~周日都显示"""
         if not hasattr(self, '_lbl_week_hint'):
             return
-        wd = target_date.weekday() + 1  # 1=周一 ... 7=周日
-        if wd < 6:  # 周一~周五不显示
-            self._lbl_week_hint.setVisible(False)
-            self._lbl_week_hint.setProperty("rest", "false")
-            return
-
-        config = self._load_work_config()
-        week_mode = config.get("week_mode", "standard")
         week_num = target_date.isocalendar()[1]
-
-        if wd == 7:  # 周日
-            text = "周末休息"
+        is_odd = (week_num % 2 != 0)
+        if is_odd:
+            text = f"本周 · 奇数周（第{week_num}周）"
+            rest = "false"
+        else:
+            text = f"本周 · 偶数周（第{week_num}周）"
             rest = "true"
-        elif week_mode == "standard":
-            text = "标准周 · 双休"
-            rest = "true"
-        elif week_mode == "small":
-            # 小周模式：奇数周周六上班
-            if week_num % 2 != 0:
-                text = "本周 · 小周（上班）"
-                rest = "false"
-            else:
-                text = "本周 · 大周（休息）"
-                rest = "true"
-        else:  # big
-            # 大周模式：偶数周周六上班
-            if week_num % 2 == 0:
-                text = "本周 · 大周（上班）"
-                rest = "false"
-            else:
-                text = "本周 · 小周（休息）"
-                rest = "true"
 
         self._lbl_week_hint.setText(text)
         self._lbl_week_hint.setProperty("rest", rest)
