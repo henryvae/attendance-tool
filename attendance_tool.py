@@ -151,12 +151,12 @@ async def _launch_browser(p, **launch_kwargs):
 
 
 async def _safe_close_browser(browser):
-    """安全关闭浏览器：先尝试优雅 close（8s 超时），超时则强杀驱动进程树。
-    Playwright 1.58 在本机 browser.close() 必卡死，必须用此函数兜底。"""
+    """安全关闭浏览器：先尝试优雅 close（2s 超时），超时则强杀驱动进程树。
+    Playwright 1.58 在本机 browser.close() 必卡死，用短超时快速兜底。"""
     try:
-        await asyncio.wait_for(browser.close(), timeout=8)
+        await asyncio.wait_for(browser.close(), timeout=2)
     except asyncio.TimeoutError:
-        _log_debug("[浏览器] close 卡死(8s)，强杀驱动进程树")
+        _log_debug("[浏览器] close 卡死(2s)，强杀驱动进程树")
         _force_kill_browser_drivers()
     except Exception as e:
         _log_debug(f"[浏览器] close 异常: {e}")
