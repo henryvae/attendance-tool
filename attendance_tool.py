@@ -1691,6 +1691,7 @@ class LoginWindow(QWidget):
         self._save_remember_pwd = False
         self._load_saved_user()
         self._setup_ui()
+        self._init_tray()  # 登录窗口也挂托盘，关闭时不退出程序
         if self._saved_user:
             self.input_user.setText(self._saved_user)
             self.chk_remember.setChecked(True)
@@ -2107,11 +2108,51 @@ class LoginWindow(QWidget):
         self._refresh_eye_icon()
 
     def keyPressEvent(self, event):
-        # Esc 直接退出登录程序
+        # Esc 最小化到托盘，不退出程序（与关闭按钮行为一致）
         if event.key() == Qt.Key_Escape:
-            QApplication.instance().quit()
+            self.hide()
         else:
             super().keyPressEvent(event)
+
+    def _init_tray(self):
+        """登录窗口托盘图标：关闭登录窗时保持程序在后台运行"""
+        from PyQt5.QtWidgets import QSystemTrayIcon, QMenu, QAction
+
+        self.tray_icon = QSystemTrayIcon(self)
+        self.tray_icon.setToolTip("考勤管理系统 - 登录")
+        # 使用应用标准图标，后续登录成功后由主窗口接管托盘
+        self.tray_icon.setIcon(self.style().standardIcon(QStyle.SP_ComputerIcon))
+
+        tray_menu = QMenu()
+        act_show = QAction("显示登录窗口", self)
+        act_show.triggered.connect(self.showNormal)
+        tray_menu.addAction(act_show)
+        tray_menu.addSeparator()
+        act_quit = QAction("退出", self)
+        act_quit.triggered.connect(lambda: QApplication.instance().quit())
+        tray_menu.addAction(act_quit)
+
+        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.activated.connect(self._on_tray_activated)
+        self.tray_icon.show()
+
+    def _on_tray_activated(self, reason):
+        """双击/单击托盘图标恢复登录窗口"""
+        if reason in (QSystemTrayIcon.DoubleClick, QSystemTrayIcon.Trigger):
+            self.showNormal()
+            self.activateWindow()
+
+    def closeEvent(self, event):
+        """关闭按钮改为最小化到托盘，不退出后台进程"""
+        self.hide()
+        if self.tray_icon.isVisible():
+            self.tray_icon.showMessage(
+                "考勤管理系统",
+                "程序已最小化到系统托盘，双击图标可恢复",
+                QSystemTrayIcon.Information,
+                2000
+            )
+        event.ignore()
 
 
 # ─────────────────────────────────────────────
@@ -4366,6 +4407,9 @@ def main():
                 if main_win_holder[0] is not None:
                     main_win_holder[0].close()
                 login_win.hide()
+                # 登录成功后隐藏登录窗的托盘图标，由主窗口创建新的托盘图标接管
+                if hasattr(login_win, 'tray_icon') and login_win.tray_icon.isVisible():
+                    login_win.tray_icon.hide()
                 mw = MainWindow(cookies, username, login_window=login_win)
                 main_win_holder[0] = mw
                 mw.show()
