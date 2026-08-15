@@ -48,7 +48,7 @@ from PyQt5.QtWidgets import (
     QHeaderView, QComboBox, QProgressBar,
     QAbstractItemView, QFileDialog, QCheckBox, QStackedWidget,
     QSystemTrayIcon, QMenu, QAction, QTimeEdit,
-    QStyle, QStyleOptionComboBox, QDialog, QSpinBox, QSizePolicy,
+    QStyle, QDialog, QSpinBox, QSizePolicy,
 )
 from PyQt5.QtCore import (Qt, QDate, QThread, pyqtSignal, QTimer, QTime, QSize,
                           QPropertyAnimation, QRect, QEasingCurve, QUrl)
@@ -1182,12 +1182,8 @@ QComboBox::drop-down {
     border-bottom-right-radius: 8px;
     background: transparent;
 }
-QComboBox::down-arrow {
-    image: url(__ARROW_DOWN_GRAY__);
-}
-QComboBox:hover::down-arrow, QComboBox:focus::down-arrow {
-    image: url(__ARROW_DOWN_PRIMARY__);
-}
+/* 不使用自定义 down-arrow 图标，保留系统默认箭头；
+   自定义 image 在 Windows + Fusion 下会与默认箭头叠加成双箭头。 */
 QComboBox QAbstractItemView {
     background: #FFFFFF;
     border: 1px solid #E8EAF0;
@@ -1626,45 +1622,6 @@ class _SignalLabel(QLabel):
     def setText(self, text):
         super().setText(text)
         self.textSet.emit(str(text))
-
-
-# ─────────────────────────────────────────────
-#  QComboBox 子类：消除默认小箭头，让 PNG 箭头独占显示
-#  实测（test_arrow_solution.py 像素分析）：PyQt5 + Fusion 风格下，
-#  即便 QSS 设了 QComboBox::down-arrow { image: ... }，默认小箭头依然
-#  在下拉按钮里被画出来，导致双箭头叠加。本类在 paintEvent 末尾用背景色
-#  覆盖默认箭头区域，再画 PNG 箭头，根治此问题。
-# ─────────────────────────────────────────────
-class _CleanComboBox(QComboBox):
-    def paintEvent(self, event):
-        from PyQt5.QtGui import QPixmap
-        super().paintEvent(event)
-        # 延迟加载箭头图标（首次 paintEvent 时 QApplication 已存在）
-        try:
-            arrow_path = _arrow_icon_path("down", "#6B7280", 16)
-        except Exception:
-            return
-        opt = QStyleOptionComboBox()
-        self.initStyleOption(opt)
-        sc_rect = self.style().subControlRect(
-            QStyle.CC_ComboBox, opt, QStyle.SC_ComboBoxArrow, self)
-        if not sc_rect.isValid():
-            return
-        # 用控件背景色覆盖默认箭头区域
-        painter = QPainter(self)
-        painter.fillRect(sc_rect, self.palette().base())
-        # 画 PNG 箭头（统一灰色，不随 focus/hover 变蓝，避免截图时两个下拉框都是蓝色）
-        pix = QPixmap(arrow_path)
-        if not pix.isNull():
-            x = sc_rect.x() + (sc_rect.width() - pix.width()) // 2
-            y = sc_rect.y() + (sc_rect.height() - pix.height()) // 2
-            painter.drawPixmap(x, y, pix)
-        painter.end()
-
-
-# 注意：不要全局 monkey patch，否则日期下拉框等默认样式正常的控件会丢箭头。
-# 哪里出现双箭头，就在哪里显式实例化 _CleanComboBox。
-# QComboBox = _CleanComboBox
 
 
 # ─────────────────────────────────────────────
@@ -2567,14 +2524,14 @@ class MainWindow(QMainWindow):
         lbl_ot = QLabel("加班")
         lbl_ot.setObjectName("detailKey")
         ctrl_hb.addWidget(lbl_ot)
-        self.combo_ot_h = _CleanComboBox()
+        self.combo_ot_h = QComboBox()
         self.combo_ot_h.addItems([str(i) for i in range(13)])
         self.combo_ot_h.setFixedWidth(60)
         ctrl_hb.addWidget(self.combo_ot_h)
         lbl_h = QLabel("时")
         lbl_h.setObjectName("detailKey")
         ctrl_hb.addWidget(lbl_h)
-        self.combo_ot_m = _CleanComboBox()
+        self.combo_ot_m = QComboBox()
         self.combo_ot_m.addItems(["0", "15", "30", "45"])
         self.combo_ot_m.setFixedWidth(60)
         ctrl_hb.addWidget(self.combo_ot_m)
