@@ -21,10 +21,12 @@ import os
 import csv
 import datetime
 
-APP_VERSION = "v108"
+APP_VERSION = "v124"
 import json
 import asyncio
 import threading
+import traceback
+import subprocess
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
@@ -35,9 +37,10 @@ from PyQt5.QtWidgets import (
     QSystemTrayIcon, QMenu, QAction, QTimeEdit,
     QStyle, QDialog, QSpinBox, QSizePolicy,
 )
-from PyQt5.QtCore import Qt, QDate, QThread, pyqtSignal, QTimer, QTime, QSize
+from PyQt5.QtCore import (Qt, QDate, QThread, pyqtSignal, QTimer, QTime, QSize,
+                          QPropertyAnimation, QRect, QEasingCurve, QUrl)
 from PyQt5.QtNetwork import QLocalServer, QLocalSocket
-from PyQt5.QtGui import QFont, QColor, QIcon
+from PyQt5.QtGui import QFont, QColor, QIcon, QPainter, QDesktopServices
 
 # ─────────────────────────────────────────────
 #  常量
@@ -46,18 +49,121 @@ BASE_URL   = "https://ums.intretech.com/ums"
 LOGIN_URL  = f"{BASE_URL}/login.aspx"
 ATTEND_URL = f"{BASE_URL}/AtteUserReportManage.aspx"
 
-# Edge 浏览器路径（自动探测）
-def _find_edge():
+def _find_system_browser():
+    """查找系统中可用的 Edge 或 Chrome 浏览器，返回第一个存在的路径。"""
     candidates = [
         r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
         r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
     ]
     for p in candidates:
         if os.path.exists(p):
             return p
     return None
 
-EDGE_PATH = _find_edge()
+
+EDGE_PATH = _find_system_browser()
+
+# 检测阶段选定的、实际用于启动的浏览器可执行文件路径（优先内置完整 Chromium，失败回退系统 Edge/Chrome）
+BROWSER_EXECUTABLE = None
+
+
+def _bundled_chrome_exe():
+    """打包后，返回 _MEIPASS 内内置完整 Chromium 的 chrome.exe 路径，不存在返回 None。"""
+    import sys
+    if not getattr(sys, 'frozen', False):
+        return None
+    chrome = os.path.join(
+        sys._MEIPASS,
+        'playwright', 'driver', 'package', '.local-browsers',
+        'chromium-1208', 'chrome-win64', 'chrome.exe'
+    )
+    return chrome if os.path.exists(chrome) else None
+
+
+# 已记录的 Playwright 驱动(node)进程 PID，用于 close 卡死时强制结束其进程树（含 chrome 子进程）
+BROWSER_DRIVER_PIDS = set()
+
+
+# Windows 下无控制台 GUI 程序启动控制台子进程（tasklist/taskkill 等）时，
+# 必须加 CREATE_NO_WINDOW，否则会闪现黑色 cmd 窗口
+_NO_WINDOW_FLAGS = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+
+
+def _node_pids():
+    """返回当前系统中所有 node.exe 的 PID 集合（tasklist 用 GBK 解码以适配中文 Windows）。"""
+    try:
+        out = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq node.exe", "/FO", "CSV"],
+            capture_output=True, text=True, encoding="gbk", errors="ignore", timeout=10,
+            creationflags=_NO_WINDOW_FLAGS,
+        ).stdout
+        pids = set()
+        for line in out.splitlines():
+            if "node.exe" in line:
+                parts = line.split('","')
+                if len(parts) > 1:
+                    pid = parts[1].strip('"')
+                    if pid.isdigit():
+                        pids.add(int(pid))
+        return pids
+    except Exception:
+        return set()
+
+
+def _force_kill_browser_drivers():
+    """强制结束所有已记录的 Playwright 驱动进程树（node 及其子进程 chrome/edge）。
+    用于 browser.close() 卡死时的兜底清理，避免僵尸浏览器进程残留。"""
+    for pid in list(BROWSER_DRIVER_PIDS):
+        try:
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)],
+                            capture_output=True, timeout=10,
+                            creationflags=_NO_WINDOW_FLAGS)
+        except Exception:
+            pass
+    BROWSER_DRIVER_PIDS.clear()
+
+
+async def _launch_browser(p, **launch_kwargs):
+    """启动浏览器并记录其驱动(node)进程 PID，便于 close 卡死时强杀。
+    返回 browser 对象。"""
+    before = _node_pids()
+    browser = await p.chromium.launch(**launch_kwargs)
+    after = _node_pids()
+    new_drivers = after - before
+    BROWSER_DRIVER_PIDS.update(new_drivers)
+    _log_debug(f"[浏览器] launch 完成，驱动 PIDs={new_drivers}（全部={BROWSER_DRIVER_PIDS}）")
+    return browser
+
+
+async def _safe_close_browser(browser):
+    """安全关闭浏览器：先尝试优雅 close（8s 超时），超时则强杀驱动进程树。
+    Playwright 1.58 在本机 browser.close() 必卡死，必须用此函数兜底。"""
+    try:
+        await asyncio.wait_for(browser.close(), timeout=8)
+    except asyncio.TimeoutError:
+        _log_debug("[浏览器] close 卡死(8s)，强杀驱动进程树")
+        _force_kill_browser_drivers()
+    except Exception as e:
+        _log_debug(f"[浏览器] close 异常: {e}")
+        _force_kill_browser_drivers()
+
+
+def _log_debug(msg):
+    """把调试信息追加写到桌面日志文件，便于排查打包后问题。"""
+    try:
+        if getattr(sys, '_MEIPASS', None):
+            base = os.path.join(os.path.expanduser("~"), "Desktop")
+        else:
+            base = os.path.dirname(os.path.abspath(__file__))
+        log_path = os.path.join(base, "attendance_debug.log")
+        with open(log_path, "a", encoding="utf-8") as f:
+            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"[{ts}] {msg}\n")
+    except Exception:
+        pass
+
 
 THEME = {
     "primary":    "#4F6BF6",
@@ -79,19 +185,20 @@ THEME = {
 # ─────────────────────────────────────────────
 #  Playwright 核心操作（同步包装）
 # ─────────────────────────────────────────────
-def _run_async(coro):
-    """在新事件循环中同步运行异步函数"""
-    loop = asyncio.new_event_loop()
+def _run_async(coro, timeout=None):
+    """在新事件循环中同步运行异步函数；timeout 为总超时秒数"""
     try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+        if timeout:
+            return asyncio.run(asyncio.wait_for(coro, timeout=timeout))
+        return asyncio.run(coro)
+    except asyncio.TimeoutError:
+        raise
 
 
 def _setup_bundled_browser_env():
     """
     如果是打包后的 exe，把 PLAYWRIGHT_BROWSERS_PATH 指向 _MEIPASS 内的浏览器目录。
-    这样 Playwright 会直接从 exe 解压的临时目录找到内置的 chromium_headless_shell。
+    这样 Playwright 会直接从 exe 解压的临时目录找到内置的完整 Chromium。
     返回 True 表示找到内置浏览器，False 表示没有。
     """
     import os
@@ -108,22 +215,22 @@ def _setup_bundled_browser_env():
         'playwright', 'driver', 'package', '.local-browsers'
     )
 
-    # 验证 headless shell 是否存在
-    headless_exe = os.path.join(
+    # 验证完整 Chromium 是否存在（Playwright 1.58 对应 chromium-1208）
+    chrome_exe = os.path.join(
         browsers_path,
-        'chromium_headless_shell-1208',
-        'chrome-headless-shell-win64',
-        'chrome-headless-shell.exe'
+        'chromium-1208',
+        'chrome-win64',
+        'chrome.exe'
     )
 
-    if os.path.exists(headless_exe):
+    if os.path.exists(chrome_exe):
         # 设置环境变量，让 Playwright 在这里找浏览器
         os.environ['PLAYWRIGHT_BROWSERS_PATH'] = browsers_path
-        print(f"[浏览器] 使用内置 headless shell: {headless_exe}")
-        print(f"[浏览器] PLAYWRIGHT_BROWSERS_PATH = {browsers_path}")
+        _log_debug(f"[浏览器] 使用内置 Chromium: {chrome_exe}")
+        _log_debug(f"[浏览器] PLAYWRIGHT_BROWSERS_PATH = {browsers_path}")
         return True
     else:
-        print(f"[浏览器] 内置 headless shell 不存在: {headless_exe}")
+        _log_debug(f"[浏览器] 内置 Chromium 不存在: {chrome_exe}")
         return False
 
 
@@ -147,17 +254,24 @@ def _ensure_playwright_browsers(progress_callback=None):
 
     # 尝试使用内置浏览器（打包后）
     if _setup_bundled_browser_env():
-        return True, None
+        # 即使文件存在，也验证它能否真正启动，避免打包损坏导致卡住
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True, timeout=15000)
+                browser.close()
+            return True, None
+        except Exception:
+            # 继续尝试系统 Chromium
+            pass
 
     # 尝试用同步 API 检测已安装的浏览器（开发环境 / 外部浏览器）
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True, timeout=8000)
             browser.close()
-            print("[浏览器] 使用系统已安装的 Chromium")
             return True, None
-    except Exception as e:
-        print(f"[浏览器] 系统 Chromium 不可用: {e}")
+    except Exception:
+        pass
 
     # 未安装，尝试下载
     if progress_callback:
@@ -172,7 +286,8 @@ def _ensure_playwright_browsers(progress_callback=None):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            bufsize=1
+            bufsize=1,
+            creationflags=_NO_WINDOW_FLAGS
         )
 
         for line in process.stdout:
@@ -182,7 +297,12 @@ def _ensure_playwright_browsers(progress_callback=None):
                     progress_callback(line[:100])
             print(f"[Playwright] {line}")
 
-        process.wait()
+        try:
+            process.wait(timeout=300)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            return False, "安装浏览器超时（5分钟），请手动运行：\npython -m playwright install chromium"
+
         if process.returncode == 0:
             print("[浏览器] Chromium 安装成功")
             return True, None
@@ -194,6 +314,72 @@ def _ensure_playwright_browsers(progress_callback=None):
         return False, f"安装浏览器失败：{e}\n\n请手动运行命令安装：\npython -m playwright install chromium"
 
 
+async def _ensure_playwright_browsers_async(progress_callback=None):
+    """
+    异步版浏览器检测。只校验浏览器二进制是否存在并选定 BROWSER_EXECUTABLE，
+    不再启动+关闭浏览器来验证（因为 Playwright 1.58 的 browser.close() 在本机会卡死，
+    检测阶段启动会导致整个流程卡住）。真正启动在 _async_login / _async_fetch 里做。
+    返回 (True, None) 成功，或 (False, error_msg) 失败。
+    """
+    import sys
+    global BROWSER_EXECUTABLE
+
+    try:
+        import playwright  # noqa: F401
+    except ImportError:
+        return False, "未安装 Playwright，请先运行：\npip install playwright"
+
+    _log_debug("[浏览器] 开始检查浏览器环境")
+    if progress_callback:
+        progress_callback("正在检查浏览器环境...")
+
+    # 候选浏览器：内置完整 Chromium（优先） -> 系统 Edge/Chrome
+    bundled = _bundled_chrome_exe()
+    sys_browser = _find_system_browser()
+    candidates = []
+    if bundled:
+        candidates.append(("内置完整 Chromium", bundled))
+    if sys_browser:
+        candidates.append(("系统浏览器", sys_browser))
+
+    if not candidates:
+        if getattr(sys, "frozen", False):
+            return False, "未找到可用浏览器，请重新打包或安装 Edge/Chrome。"
+    else:
+        # 选第一个存在的二进制作为后续启动用；真正的 launch 在 login/fetch 中完成
+        chosen_name, chosen_path = candidates[0]
+        BROWSER_EXECUTABLE = chosen_path
+        _log_debug(f"[浏览器] 选定 {chosen_name}: {chosen_path}（候选={[c[0] for c in candidates]}）")
+        return True, None
+
+    # 源码运行时未安装，尝试下载
+    if progress_callback:
+        progress_callback("正在下载安装 Chromium 浏览器（首次需几分钟）...")
+
+    cmd = [sys.executable, "-m", "playwright", "install", "chromium"]
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            creationflags=_NO_WINDOW_FLAGS if os.name == "nt" else 0
+        )
+        try:
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=300)
+        except asyncio.TimeoutError:
+            process.kill()
+            return False, "安装浏览器超时（5分钟），请手动运行：\npython -m playwright install chromium"
+
+        if process.returncode == 0:
+            _log_debug("[浏览器] Chromium 安装成功")
+            return True, None
+        else:
+            out = stdout.decode("utf-8", errors="ignore")[-500:] if stdout else ""
+            return False, f"自动安装浏览器失败：\n{out}\n请手动运行：\npython -m playwright install chromium"
+    except Exception as e:
+        return False, f"安装浏览器失败：{e}\n\n请手动运行命令安装：\npython -m playwright install chromium"
+
+
 async def _async_login(username: str, password: str, install_progress_callback=None):
     """
     用 Playwright 登录，成功返回 cookies 列表；失败返回 (None, error_msg)
@@ -201,30 +387,42 @@ async def _async_login(username: str, password: str, install_progress_callback=N
     """
     from playwright.async_api import async_playwright
 
-    # 确保浏览器已安装
-    ok, err = _ensure_playwright_browsers(progress_callback=install_progress_callback)
+
+    # 确保浏览器已安装（使用 async API，避免阻塞事件循环导致界面卡住）
+    ok, err = await _ensure_playwright_browsers_async(progress_callback=install_progress_callback)
     if not ok:
         return None, err
 
     launch_kwargs = dict(
         headless=True,
         args=["--ignore-certificate-errors", "--no-sandbox",
-              "--disable-dev-shm-usage"]
+              "--disable-dev-shm-usage", "--disable-gpu"]
     )
-    # 使用系统 Edge（如果配置）
-    if EDGE_PATH:
-        launch_kwargs["executable_path"] = EDGE_PATH
+    # 使用检测阶段选定的浏览器（内置 Chromium 优先，否则系统 Edge/Chrome）
+    if BROWSER_EXECUTABLE:
+        launch_kwargs["executable_path"] = BROWSER_EXECUTABLE
+        _log_debug(f"[登录] 使用浏览器: {BROWSER_EXECUTABLE}")
+    else:
+        _log_debug("[登录] 未选定浏览器，使用 Playwright 默认")
 
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(**launch_kwargs)
+            launch_kwargs["timeout"] = 30000
+            browser = await asyncio.wait_for(
+                _launch_browser(p, **launch_kwargs),
+                timeout=60,
+            )
+
             context = await browser.new_context(ignore_https_errors=True)
             page    = await context.new_page()
 
             await page.goto(LOGIN_URL, timeout=25000, wait_until="domcontentloaded")
+
             await page.fill("input[name='txtUserName']", username)
             await page.fill("input[name='txtPWD']",      password)
+
             await page.click("input[name='Button1']")
+
             await page.wait_for_load_state("domcontentloaded", timeout=20000)
 
             cur_url = page.url
@@ -238,12 +436,18 @@ async def _async_login(username: str, password: str, install_progress_callback=N
                         if t:
                             err_text = t
                             break
-                await browser.close()
+                # 保存失败现场截图，便于排查
+                try:
+                    out_path = os.path.join(_debug_path(), "login_failed.png")
+                    await page.screenshot(path=out_path, full_page=False)
+                except Exception as se:
+                    pass
+                await _safe_close_browser(browser)
                 return None, err_text or "用户名或密码错误，请重试。"
 
             # 保存 cookies
             cookies = await context.cookies()
-            await browser.close()
+            await _safe_close_browser(browser)
             return cookies, None
 
     except Exception as e:
@@ -261,21 +465,24 @@ async def _async_fetch(cookies, start_date: str, end_date: str):
     """
     from playwright.async_api import async_playwright
 
-    # 确保浏览器已安装
-    ok, err = _ensure_playwright_browsers()
+    # 确保浏览器已安装（使用 async API，避免阻塞事件循环）
+    ok, err = await _ensure_playwright_browsers_async()
     if not ok:
         return None, None, err
 
     launch_kwargs = dict(
         headless=True,
         args=["--ignore-certificate-errors", "--no-sandbox",
-              "--disable-dev-shm-usage"]
+              "--disable-dev-shm-usage", "--disable-gpu"]
     )
-    if EDGE_PATH:
-        launch_kwargs["executable_path"] = EDGE_PATH
+    if BROWSER_EXECUTABLE:
+        launch_kwargs["executable_path"] = BROWSER_EXECUTABLE
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(**launch_kwargs)
+        browser = await asyncio.wait_for(
+            _launch_browser(p, **launch_kwargs),
+            timeout=60,
+        )
         context = await browser.new_context(ignore_https_errors=True)
 
         # 恢复 cookies（免登录）
@@ -286,7 +493,7 @@ async def _async_fetch(cookies, start_date: str, end_date: str):
 
         # 检查是否被重定向到登录页
         if "login" in page.url.lower():
-            await browser.close()
+            await _safe_close_browser(browser)
             raise Exception("会话已过期，请重新登录。")
 
         # 设置日期范围（3=自定义）和显示模式（1=列表）
@@ -328,7 +535,7 @@ async def _async_fetch(cookies, start_date: str, end_date: str):
 
         # 解析表格
         headers, rows = await _extract_table(page)
-        await browser.close()
+        await _safe_close_browser(browser)
         return headers, rows
 
 
@@ -384,11 +591,17 @@ class LoginWorker(QThread):
                 # 在主线程发出进度信号
                 self.install_progress.emit(msg)
 
-            cookies, err = _run_async(_async_login(self.username, self.password, progress_callback))
+            # 总超时 70 秒，防止 Playwright 某个步骤死等导致界面卡住
+            cookies, err = _run_async(
+                _async_login(self.username, self.password, progress_callback),
+                timeout=70
+            )
             if cookies:
                 self.success.emit(cookies)
             else:
                 self.failed.emit(err or "登录失败")
+        except asyncio.TimeoutError:
+            self.failed.emit("登录超时：操作超过 70 秒未完成，请检查网络/VPN/工号密码后重试。")
         except Exception as e:
             # 捕获所有异常，确保错误信息传递给用户
             self.failed.emit(f"登录异常：{e}")
@@ -469,20 +682,24 @@ async def _async_fetch_avatar(cookies):
     import urllib.request
     from playwright.async_api import async_playwright
 
-    ok, err = _ensure_playwright_browsers()
+    ok, err = await _ensure_playwright_browsers_async()
     if not ok:
         return None
 
     launch_kwargs = dict(
         headless=True,
-        args=["--ignore-certificate-errors", "--no-sandbox", "--disable-dev-shm-usage"]
+        args=["--ignore-certificate-errors", "--no-sandbox",
+              "--disable-dev-shm-usage", "--disable-gpu"]
     )
-    if EDGE_PATH:
-        launch_kwargs["executable_path"] = EDGE_PATH
+    if BROWSER_EXECUTABLE:
+        launch_kwargs["executable_path"] = BROWSER_EXECUTABLE
 
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(**launch_kwargs)
+            browser = await asyncio.wait_for(
+                _launch_browser(p, **launch_kwargs),
+                timeout=60,
+            )
             context = await browser.new_context(ignore_https_errors=True)
             await context.add_cookies(cookies)
             page = await context.new_page()
@@ -494,7 +711,7 @@ async def _async_fetch_avatar(cookies):
             # Cookie 过期 → 跳转登录页
             if "login" in page.url.lower():
                 await _save_avatar_debug(page, "Cookie 过期，跳转登录页")
-                await browser.close()
+                await _safe_close_browser(browser)
                 return None
 
             # ── 策略1：特定选择器 ──
@@ -569,7 +786,7 @@ async def _async_fetch_avatar(cookies):
 
             # 无论是否找到，都保存调试截图（帮助下次调试）
             await _save_avatar_debug(page, f"头像{'已找到' if avatar_url else '未找到'}，调试截图")
-            await browser.close()
+            await _safe_close_browser(browser)
 
             if not avatar_url:
                 return None
@@ -1030,13 +1247,29 @@ QProgressBar::chunk {
 }
 
 /* ── 复选框 / 单选 ── */
-QCheckBox { spacing: 8px; color: #3A4050; font-size: 13px; }
+QCheckBox { spacing: 6px; color: #3A4050; font-size: 13px; }
 QCheckBox::indicator {
-    width: 18px; height: 18px; border-radius: 5px;
+    width: 16px; height: 16px; border-radius: 4px;
     border: 1.5px solid #D6DAE4; background: #FFFFFF;
 }
 QCheckBox::indicator:hover { border-color: #4F6BF6; }
 QCheckBox::indicator:checked { background: #4F6BF6; border-color: #4F6BF6; }
+
+#chkRememberPwd::indicator {
+    width: 16px; height: 16px; border-radius: 4px;
+    border: 1.5px solid #D6DAE4; background: #FFFFFF;
+}
+#chkRememberPwd::indicator:hover { border-color: #4F6BF6; }
+#chkRememberPwd::indicator:checked {
+    background: #4F6BF6; border-color: #4F6BF6;
+    image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxNicgaGVpZ2h0PScxNicgdmlld0JveD0nMCAwIDE2IDE2Jz48cGF0aCBmaWxsPSdub25lJyBzdHJva2U9J3doaXRlJyBzdHJva2Utd2lkdGg9JzIuNScgc3Ryb2tlLWxpbmVjYXA9J3JvdW5kJyBzdHJva2UtbGluZWpvaW49J3JvdW5kJyBkPSdNNCA4IEw3IDExIEwxMiA1Jy8+PC9zdmc+");
+}
+
+#forgetPwd {
+    color: #4F6BF6; font-size: 13px; font-weight: 600;
+}
+#forgetPwd:hover { color: #4358E0; text-decoration: underline; }
+
 QRadioButton { spacing: 8px; color: #3A4050; font-size: 13px; }
 QRadioButton::indicator {
     width: 16px; height: 16px; border-radius: 9px;
@@ -1130,8 +1363,8 @@ QMenu::item { padding: 7px 26px 7px 14px; border-radius: 6px; color: #3A4050; fo
 QMenu::item:selected { background: #EDF0FE; color: #4F6BF6; }
 QMenu::separator { height: 1px; background: #E8EAF0; margin: 4px 8px; }
 
-/* ── 下班提醒弹窗 ── */
-#remindDialog { background: #FFFFFF; border-radius: 14px; }
+/* ── 下班提醒弹窗（v110 直角贴边，360 宽高度自适应） ── */
+#remindDialog { background: #FFFFFF; border-radius: 0; }
 #remindIcon { font-size: 30px; }
 #remindTitle { font-size: 17px; font-weight: 800; color: #1A1D26; }
 #remindSub { font-size: 13px; color: #6B7280; }
@@ -1166,7 +1399,6 @@ QMenu::separator { height: 1px; background: #E8EAF0; margin: 4px 8px; }
 #navLogout:hover { background: #FDEBEB; color: #DC2626; }
 #navLogout:pressed { background: #F9D2D2; }
 #settingsCard { background: #FFFFFF; border: 1px solid #E8EAF0; border-radius: 12px; }
-#otCard { background: #FFFFFF; border: 1px solid #E8EAF0; border-radius: 12px; }
 """
 
 STYLE_LOGIN = f"""
@@ -1177,6 +1409,7 @@ QWidget {{
 """
 
 # 登录窗背景：柔和渐变 + 右上角光斑（通过代码设置，不使用 STYLE_LOGIN）
+# v110 窗口即卡片：无边框圆角窗口，root 透明，渐变与圆角由卡片承担
 LOGIN_BG_QSS = """
 QWidget#loginRoot {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
@@ -1187,7 +1420,86 @@ QWidget#glowBox {
         stop:0 rgba(79,107,246,0.15), stop:1 rgba(79,107,246,0));
     border: none;
 }
+
+/* ── 登录窗复选框 / 忘记密码链接 ── */
+QCheckBox { spacing: 6px; color: #3A4050; font-size: 13px; }
+QCheckBox::indicator {
+    width: 16px; height: 16px; border-radius: 4px;
+    border: 1.5px solid #D6DAE4; background: #FFFFFF;
+}
+QCheckBox::indicator:hover { border-color: #4F6BF6; }
+QCheckBox::indicator:checked {
+    background: #4F6BF6; border-color: #4F6BF6;
+    image: url("{check_icon_path}");
+}
+
+#forgetPwd {
+    color: #4F6BF6; font-size: 13px; font-weight: 600;
+}
+#forgetPwd:hover { color: #4358E0; text-decoration: underline; }
 """
+
+
+# ── 密码显隐按钮图标（与 UI设计方案.html 的 Feather eye/eye-off 一致）──
+SVG_EYE_OFF = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>"""
+SVG_EYE_ON = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>"""
+
+
+def _make_svg_icon(svg_template: str, size: int = 18, color: str = "#6B7280"):
+    """把 SVG 字符串渲染为 QIcon（失败返回 None，供调用方回退）"""
+    try:
+        from PyQt5.QtSvg import QSvgRenderer
+        from PyQt5.QtGui import QPixmap, QPainter
+        from PyQt5.QtCore import QRect
+        renderer = QSvgRenderer(svg_template.format(color=color).encode("utf-8"))
+        pix = QPixmap(size, size)
+        pix.fill(Qt.transparent)
+        p = QPainter(pix)
+        p.setRenderHint(QPainter.Antialiasing)
+        renderer.setViewBox(QRect(0, 0, 24, 24))
+        renderer.render(p)
+        p.end()
+        return QIcon(pix)
+    except Exception:
+        return None
+
+
+def _white_check_icon_path():
+    """生成白色对勾 PNG 图标到临时目录，供 QCheckBox::indicator:checked 使用。
+
+    Qt QSS 的 `image:` 属性不支持 data URI，必须引用本地文件路径。
+    该函数在首次调用时创建缓存文件，后续复用同一路径。
+    """
+    from PyQt5.QtGui import QPixmap, QPainter, QPen, QPolygonF
+    from PyQt5.QtCore import Qt, QPointF, QByteArray, QBuffer, QIODevice
+
+    cache_dir = os.path.join(os.path.expanduser("~"), ".attendance_tool_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    icon_path = os.path.join(cache_dir, "check_white_16.png")
+
+    if os.path.exists(icon_path):
+        return icon_path
+
+    pix = QPixmap(16, 16)
+    pix.fill(Qt.transparent)
+    p = QPainter(pix)
+    p.setRenderHint(QPainter.Antialiasing)
+    pen = QPen(Qt.white)
+    pen.setWidth(2)
+    pen.setCapStyle(Qt.RoundCap)
+    pen.setJoinStyle(Qt.RoundJoin)
+    p.setPen(pen)
+    p.drawPolyline(QPolygonF([QPointF(4, 8), QPointF(7, 11), QPointF(12, 5)]))
+    p.end()
+
+    ba = QByteArray()
+    buf = QBuffer(ba)
+    buf.open(QIODevice.WriteOnly)
+    pix.save(buf, "PNG")
+    buf.close()
+    with open(icon_path, "wb") as f:
+        f.write(ba.data())
+    return icon_path
 
 
 class _SignalLabel(QLabel):
@@ -1210,9 +1522,15 @@ class LoginWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("考勤管理系统 · 登录")
-        # 窗口宽度固定 412（卡片 380 + 左右 16px 渐变边距），高度由内容自适应
-        self.setFixedWidth(412)
-        self.setStyleSheet(LOGIN_BG_QSS)  # 代码内渐变背景，不使用空的 STYLE_LOGIN
+        # 窗口即卡片：360×460 紧贴窗口、圆角 14px、四周零留边
+        self.setFixedWidth(360)
+        self.setFixedHeight(460)
+        # 登录窗：保留系统标题栏（最小化/最大化/关闭按钮），渐变背景由 root 承担
+        self.setWindowFlags(Qt.Window)
+        # 生成白色对勾图标文件，QSS 的 image: 属性只接受本地文件路径
+        self.setStyleSheet(LOGIN_BG_QSS.replace(
+            "{check_icon_path}", _white_check_icon_path().replace("\\", "/")))
+
         self._worker = None
         self._is_logging_in = False  # 登录中标志，防止重复登录
         self._saved_user = ""
@@ -1281,40 +1599,39 @@ class LoginWindow(QWidget):
         main_lay.setSpacing(0)
         main_lay.addWidget(root)
 
-        # ── 右上角淡蓝色光斑装饰 ──
+        # ── 右上角淡蓝色光斑装饰（200×200，移入卡片内部右上角） ──
         glow = QFrame(root)
         glow.setObjectName("glowBox")
-        glow.setFixedSize(240, 240)
-        glow.move(140, -80)
+        glow.setFixedSize(200, 200)
+        glow.move(160, -70)
         glow.raise_()
 
-        # ── 水平居中白色圆角卡片 ──
+        # ── v110 窗口即卡片：铺满窗口、圆角14px、柔和渐变背景 ──
         self._card = QFrame()
         self._card.setObjectName("loginCard")
-        self._card.setFixedWidth(380)
         self._card.setStyleSheet(
-            "QFrame#loginCard { background: #FFFFFF; border: 1px solid #E8EAF0;"
-            " border-radius: 16px; }")
-
-        # 卡片大阴影（近似设计稿 box-shadow: lg）
-        try:
-            from PyQt5.QtWidgets import QGraphicsDropShadowEffect
-            _sh = QGraphicsDropShadowEffect(self._card)
-            _sh.setBlurRadius(32)
-            _sh.setOffset(0, 8)
-            _sh.setColor(QColor(26, 29, 38, 45))
-            self._card.setGraphicsEffect(_sh)
-        except Exception:
-            pass
+            "QFrame#loginCard { background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            " stop:0 #EEF1FF, stop:0.38 #FBFBFF, stop:1 #FFFFFF);"
+            " border: none; border-radius: 14px; }")
 
         cl = QVBoxLayout(self._card)
-        cl.setContentsMargins(36, 32, 36, 26)
+        cl.setContentsMargins(28, 0, 28, 24)
         cl.setSpacing(0)
 
-        # ── 48px 渐变 Logo ──
+        # ── 顶部 4px 主色渐变装饰条（贴窗口最顶，与卡片同圆角） ──
+        top_bar = QFrame()
+        top_bar.setFixedHeight(4)
+        top_bar.setStyleSheet(
+            "QFrame { background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            " stop:0 #4F6BF6, stop:1 #8B5CF6); border: none;"
+            " border-top-left-radius: 14px; border-top-right-radius: 14px; }")
+        cl.addWidget(top_bar)
+        cl.addSpacing(10)
+
+        # ── 40px 渐变 Logo ──
         logo_box = QFrame()
         logo_box.setObjectName("loginLogoBox")
-        logo_box.setFixedSize(48, 48)
+        logo_box.setFixedSize(40, 40)
         logo_box.setStyleSheet(
             "QFrame#loginLogoBox { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
             " stop:0 #6E85FF, stop:0.7 #4F6BF6, stop:1 #3B4FD8);"
@@ -1323,46 +1640,48 @@ class LoginWindow(QWidget):
         logo_lay.setContentsMargins(0, 0, 0, 0)
         logo_lbl = QLabel("\U0001F4C5")
         logo_lbl.setAlignment(Qt.AlignCenter)
-        logo_lbl.setStyleSheet("font-size: 24px; background: transparent;")
+        logo_lbl.setStyleSheet("font-size: 20px; background: transparent;")
         logo_lay.addWidget(logo_lbl)
         cl.addWidget(logo_box)
+        cl.addSpacing(8)
 
         # ── 标题 / 副标题 ──
         lbl_welcome = QLabel("欢迎回来")
         lbl_welcome.setStyleSheet(
             "font-size: 20px; font-weight: 800; color: #1A1D26;"
-            " background: transparent; margin-top: 18px;")
+            " background: transparent; min-height: 24px;")
         cl.addWidget(lbl_welcome)
 
         lbl_sub = QLabel("登录 UMS 系统查看你的考勤")
         lbl_sub.setStyleSheet(
             "font-size: 13px; color: #6B7280; background: transparent;"
-            " margin-top: 4px; margin-bottom: 26px;")
+            " margin-bottom: 14px;")
         cl.addWidget(lbl_sub)
+        cl.addSpacing(4)
 
         # ── 工号 ──
         lbl_u = QLabel("工号")
         lbl_u.setStyleSheet(
             "font-size: 12px; font-weight: 600; color: #3A4050;"
-            " background: transparent; margin-bottom: 6px;")
+            " background: transparent; margin-bottom: 4px;")
         cl.addWidget(lbl_u)
 
         self.input_user = QLineEdit()
         self.input_user.setPlaceholderText("请输入工号")
         self.input_user.setClearButtonEnabled(True)
-        self.input_user.setFixedHeight(44)
+        self.input_user.setFixedHeight(40)
         self.input_user.setStyleSheet(
             "QLineEdit { border: 1.5px solid #D6DAE4; border-radius: 10px;"
             " padding: 0 14px; font-size: 14px; background: #FBFBFE; }"
             "QLineEdit:focus { border-color: #4F6BF6; background: #FFFFFF; }")
         cl.addWidget(self.input_user)
-        cl.addSpacing(16)
+        cl.addSpacing(10)
 
         # ── 密码 ──
         lbl_p = QLabel("密码")
         lbl_p.setStyleSheet(
             "font-size: 12px; font-weight: 600; color: #3A4050;"
-            " background: transparent; margin-bottom: 6px;")
+            " background: transparent; margin-bottom: 4px;")
         cl.addWidget(lbl_p)
 
         pwd_row = QHBoxLayout()
@@ -1371,41 +1690,56 @@ class LoginWindow(QWidget):
         self.input_pwd = QLineEdit()
         self.input_pwd.setPlaceholderText("请输入密码")
         self.input_pwd.setEchoMode(QLineEdit.Password)
-        self.input_pwd.setFixedHeight(44)
+        self.input_pwd.setFixedHeight(40)
         self.input_pwd.setStyleSheet(
             "QLineEdit { border: 1.5px solid #D6DAE4; border-radius: 10px;"
             " padding: 0 14px; font-size: 14px; background: #FBFBFE; }"
             "QLineEdit:focus { border-color: #4F6BF6; background: #FFFFFF; }")
         pwd_row.addWidget(self.input_pwd, stretch=1)
 
-        self.btn_eye = QPushButton("\U0001F441")
+        self.btn_eye = QPushButton()
         self.btn_eye.setFixedSize(44, 44)
         self.btn_eye.setCursor(Qt.PointingHandCursor)
         self.btn_eye.setStyleSheet(
             "QPushButton { background: #F0F0F0;"
-            " border: 1.5px solid #E8EAF0; border-radius: 10px; font-size: 17px; }"
+            " border: 1.5px solid #E8EAF0; border-radius: 10px; }"
             "QPushButton:hover { background: #E0E0E0; border-color: #4F6BF6; }")
+        self._eye_icon_off = _make_svg_icon(SVG_EYE_OFF)  # 闭眼：密码隐藏
+        self._eye_icon_on  = _make_svg_icon(SVG_EYE_ON)   # 睁眼：密码显示
         self.btn_eye.clicked.connect(self._toggle_pwd_visibility)
+        self._refresh_eye_icon()
         pwd_row.addWidget(self.btn_eye)
         cl.addLayout(pwd_row)
-        cl.addSpacing(14)
+        cl.addSpacing(10)
 
-        # ── 记住账号 / 记住密码 ──
+        # ── 记住账号 / 记住密码 / 忘记密码 ──
         remember_row = QHBoxLayout()
         remember_row.setContentsMargins(0, 0, 0, 0)
-        remember_row.setSpacing(18)
+        remember_row.setSpacing(0)
+
         self.chk_remember = QCheckBox("记住账号")
+        self.chk_remember.setObjectName("chkRemember")
         self.chk_remember_pwd = QCheckBox("记住密码")
+        self.chk_remember_pwd.setObjectName("chkRememberPwd")
+
+        self.lbl_forget = QLabel("忘记密码？")
+        self.lbl_forget.setObjectName("forgetPwd")
+        self.lbl_forget.setCursor(Qt.PointingHandCursor)
+        self.lbl_forget.mousePressEvent = lambda e: QDesktopServices.openUrl(QUrl(LOGIN_URL))
+
         remember_row.addWidget(self.chk_remember)
+        remember_row.addSpacing(18)
         remember_row.addWidget(self.chk_remember_pwd)
         remember_row.addStretch()
+        remember_row.addWidget(self.lbl_forget)
+        cl.addSpacing(6)
         cl.addLayout(remember_row)
-        cl.addSpacing(22)
+        cl.addSpacing(12)
 
         # ── 主按钮「登 录」 ──
         self.btn_login = QPushButton("登 录")
         self.btn_login.setObjectName("btnLogin")
-        self.btn_login.setFixedHeight(44)
+        self.btn_login.setFixedHeight(42)
         self.btn_login.setCursor(Qt.PointingHandCursor)
         self.btn_login.setStyleSheet(
             "QPushButton { background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
@@ -1419,33 +1753,42 @@ class LoginWindow(QWidget):
         self.btn_login.clicked.connect(self._do_login)
         cl.addWidget(self.btn_login)
 
-        # ── 底部细进度条 ──
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 0)
-        self.progress.setVisible(False)
-        self.progress.setFixedHeight(4)
-        self.progress.setStyleSheet(
-            "QProgressBar{border:none;background:#EDF0FE;border-radius:2px;margin-top:14px;}"
-            "QProgressBar::chunk{background:#4F6BF6;border-radius:2px;}")
-        cl.addWidget(self.progress)
+        # ── 底部流动进度条（登录中显示，自定义 QLabel 动画更可靠） ──
+        self._progress_track = QWidget()
+        self._progress_track.setFixedHeight(4)
+        self._progress_track.setStyleSheet(
+            "background:#EDF0FE;border-radius:2px;margin-top:8px;")
+        self._progress_thumb = QLabel(self._progress_track)
+        self._progress_thumb.setFixedSize(60, 4)
+        self._progress_thumb.setStyleSheet(
+            "background:#4F6BF6;border-radius:2px;")
+        self._progress_thumb.move(0, 0)
+        self._progress_track.setVisible(False)
+        cl.addWidget(self._progress_track)
 
-        # ── 红色错误提示条 ──
+        self._progress_anim = QPropertyAnimation(self._progress_thumb, b"geometry")
+        self._progress_anim.setDuration(1200)
+        self._progress_anim.setLoopCount(-1)
+        self._progress_anim.setStartValue(QRect(0, 0, 60, 4))
+        self._progress_anim.setEndValue(QRect(240, 0, 60, 4))
+        self._progress_anim.setEasingCurve(QEasingCurve.Linear)
+
+        # ── 状态提示区（方案：红色圆角卡片错误提示） ──
         self.lbl_err = QLabel("")
         self.lbl_err.setAlignment(Qt.AlignCenter)
         self.lbl_err.setWordWrap(True)
-        self.lbl_err.setMinimumHeight(20)
+        self.lbl_err.setMinimumHeight(26)
+        self.lbl_err.setVisible(False)
         self.lbl_err.setStyleSheet(
-            "color: #DC2626; font-size: 13px; background: transparent; margin-top: 12px;")
+            "background: transparent; color: #6B7280; font-size: 12px;"
+            " margin-top: 6px;")
         cl.addWidget(self.lbl_err)
 
-        root_lay.addWidget(self._card, alignment=Qt.AlignCenter)
+        root_lay.addWidget(self._card)  # 卡片铺满窗口（360×460 窗即卡片）
 
         # 回车快捷登录
         self.input_user.returnPressed.connect(self._do_login)
         self.input_pwd.returnPressed.connect(self._do_login)
-
-        # 窗口高度按卡片内容 + 上下 16px 渐变边距自适应，宽度 412（卡片 380 + 左右 16px）
-        self.setFixedHeight(self._card.sizeHint().height() + 32)
 
 
     def _do_login(self):
@@ -1454,14 +1797,20 @@ class LoginWindow(QWidget):
             return
         self._is_logging_in = True
         self.btn_login.setEnabled(False)
-        self.progress.setVisible(True)
+        self._progress_track.setVisible(True)
+        self._progress_anim.start()
         
         username = self.input_user.text().strip()
         password = self.input_pwd.text().strip()
         if not username or not password:
-            self.lbl_err.setText("工号和密码不能为空")
+            self.lbl_err.setStyleSheet(
+                "background: #FEE2E2; color: #DC2626; border-radius: 8px;"
+                " padding: 6px 10px; font-size: 12px; margin-top: 6px;")
+            self.lbl_err.setText("⚠ 工号和密码不能为空")
+            self.lbl_err.setVisible(True)
             self.btn_login.setEnabled(True)
-            self.progress.setVisible(False)
+            self._progress_track.setVisible(False)
+            self._progress_anim.stop()
             self._is_logging_in = False
             return
         # 保存工号和密码
@@ -1469,9 +1818,11 @@ class LoginWindow(QWidget):
             self._save_user(username, password if self.chk_remember_pwd.isChecked() else "")
         else:
             self._save_user("")
-        self.lbl_err.setText("")
         self.lbl_err.setText("正在登录，请稍候（首次启动较慢）…")
-        self.lbl_err.setStyleSheet(f"color: {THEME['text_sec']}; font-size: 12px;")
+        self.lbl_err.setStyleSheet(
+            "background: transparent; color: #6B7280; font-size: 12px;"
+            " margin-top: 6px;")
+        self.lbl_err.setVisible(True)
 
         # 断开旧的 worker 信号
         if self._worker and self._worker.isRunning():
@@ -1500,52 +1851,61 @@ class LoginWindow(QWidget):
                 self.lbl_err.setText(f"正在下载安装浏览器… {pct:.0f}%")
             else:
                 self.lbl_err.setText("正在下载安装浏览器…")
-            self.lbl_err.setStyleSheet(f"color: {THEME['text_sec']}; font-size: 12px;")
+            self.lbl_err.setStyleSheet(
+                "background: transparent; color: #6B7280; font-size: 12px;"
+                " margin-top: 6px;")
 
     def _on_success(self, cookies, username):
-        self.progress.setVisible(False)
+        self._progress_track.setVisible(False)
+        self._progress_anim.stop()
+        self.lbl_err.setVisible(False)
         self.btn_login.setEnabled(True)
         self._is_logging_in = False  # 重置登录标志
         self.login_success.emit(cookies, username)
 
     def _on_failed(self, msg):
-        self.progress.setVisible(False)
+        self._progress_track.setVisible(False)
+        self._progress_anim.stop()
         self.btn_login.setEnabled(True)
         self._is_logging_in = False  # 重置登录标志
-        self.lbl_err.setStyleSheet(f"color: {THEME['danger']}; font-size: 12px;")
-        self.lbl_err.setText(f"登录失败：{msg}")
+        self.lbl_err.setStyleSheet(
+            "background: #FEE2E2; color: #DC2626; border-radius: 8px;"
+            " padding: 6px 10px; font-size: 12px; margin-top: 6px;")
+        self.lbl_err.setText(f"⚠ 登录失败：{msg}")
+        self.lbl_err.setVisible(True)
+
+    def _refresh_eye_icon(self):
+        """根据密码回显状态设置按钮图标（隐藏=闭眼，显示=睁眼）"""
+        hidden = (self.input_pwd.echoMode() == QLineEdit.Password)
+        icon = self._eye_icon_off if hidden else self._eye_icon_on
+        if icon is not None:
+            self.btn_eye.setIcon(icon)
+            self.btn_eye.setIconSize(QSize(18, 18))
+            self.btn_eye.setText("")
+            self.btn_eye.setToolTip("显示密码" if hidden else "隐藏密码")
+        else:
+            # SVG 渲染失败时回退 emoji（隐藏=🙈 闭眼，显示=👁 睁眼）
+            self.btn_eye.setIcon(QIcon())
+            self.btn_eye.setText("\U0001F648" if hidden else "\U0001F441")
+            self.btn_eye.setStyleSheet(
+                "QPushButton { background: #F0F0F0;"
+                " border: 1.5px solid #E8EAF0; border-radius: 10px; font-size: 17px; }"
+                "QPushButton:hover { background: #E0E0E0; border-color: #4F6BF6; }")
+            self.btn_eye.setToolTip("显示密码" if hidden else "隐藏密码")
 
     def _toggle_pwd_visibility(self):
         if self.input_pwd.echoMode() == QLineEdit.Password:
             self.input_pwd.setEchoMode(QLineEdit.Normal)
-            self.btn_eye.setText("🙈")
-            self.btn_eye.setStyleSheet(f"""
-                QPushButton {{
-                    background: {THEME['primary']};
-                    border: none;
-                    border-radius: 8px;
-                    font-size: 17px;
-                    color: white;
-                }}
-                QPushButton:hover {{
-                    background: {THEME['accent']};
-                }}
-            """)
         else:
             self.input_pwd.setEchoMode(QLineEdit.Password)
-            self.btn_eye.setText("👁")
-            self.btn_eye.setStyleSheet(f"""
-                QPushButton {{
-                    background: #F0F0F0;
-                    border: 1.5px solid {THEME['border']};
-                    border-radius: 8px;
-                    font-size: 17px;
-                }}
-                QPushButton:hover {{
-                    background: #E0E0E0;
-                    border-color: {THEME['primary']};
-                }}
-            """)
+        self._refresh_eye_icon()
+
+    def keyPressEvent(self, event):
+        # Esc 直接退出登录程序
+        if event.key() == Qt.Key_Escape:
+            QApplication.instance().quit()
+        else:
+            super().keyPressEvent(event)
 
 
 # ─────────────────────────────────────────────
@@ -1558,7 +1918,8 @@ class ConfigWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("上下班时间配置")
-        self.setFixedSize(380, 370)
+        # v110 贴边：360 宽，高度由内容自适应（无固定高度/无留白）
+        self.setFixedWidth(360)
         self.setStyleSheet(f"""
             QWidget {{
                 background-color: {THEME['bg']};
@@ -1567,6 +1928,7 @@ class ConfigWindow(QWidget):
         """)
         self._load_config()
         self._setup_ui()
+        self.adjustSize()
 
     def _get_config_path(self):
         cfg = os.path.join(os.path.expanduser("~"), ".attendance_tool_cfg.json")
@@ -1603,8 +1965,16 @@ class ConfigWindow(QWidget):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
-        layout.setSpacing(12)
+        layout.setContentsMargins(24, 20, 24, 18)
+        layout.setSpacing(0)
+
+        # 标题 + 分隔线
+        title = QLabel("上下班时间配置")
+        title.setStyleSheet(
+            f"font-size: 15px; font-weight: 700; color: {THEME['text']};"
+            f" padding-bottom: 14px; border-bottom: 1px solid {THEME['border']};")
+        layout.addWidget(title)
+        layout.addSpacing(4)
 
         # 上班时间
         layout.addLayout(self._create_time_row("最早上班", "work_start", ""))
@@ -1619,41 +1989,62 @@ class ConfigWindow(QWidget):
         # 晚休结束
         layout.addLayout(self._create_time_row("晚休结束", "dinner_end", ""))
 
-        layout.addStretch()
+        # 底部按钮触底：分隔线 + 等宽按钮
+        layout.addSpacing(13)
+        sep = QFrame()
+        sep.setFixedHeight(1)
+        sep.setStyleSheet(f"background-color: {THEME['border']}; border: none;")
+        layout.addWidget(sep)
+        layout.addSpacing(13)
 
-        # 按钮行
         btn_row = QHBoxLayout()
+        btn_row.setSpacing(10)
         btn_cancel = QPushButton("取消")
         btn_cancel.setFixedHeight(40)
+        btn_cancel.setCursor(Qt.PointingHandCursor)
+        btn_cancel.setStyleSheet(
+            f"QPushButton {{ background: {THEME['bg']}; color: {THEME['text']};"
+            f" border: 1.5px solid {THEME['border']}; border-radius: 9px;"
+            f" font-size: 14px; font-weight: 600; }}"
+            f"QPushButton:hover {{ border-color: {THEME['primary']}; color: {THEME['primary']}; }}")
         btn_cancel.clicked.connect(self.close)
-        btn_row.addWidget(btn_cancel)
+        btn_row.addWidget(btn_cancel, stretch=1)
 
         btn_save = QPushButton("保存配置")
         btn_save.setObjectName("btnPrimary")
         btn_save.setFixedHeight(40)
+        btn_save.setCursor(Qt.PointingHandCursor)
         btn_save.clicked.connect(self._on_save)
-        btn_row.addWidget(btn_save)
+        btn_row.addWidget(btn_save, stretch=1)
 
         layout.addLayout(btn_row)
 
     def _create_time_row(self, label, key, hint):
         row = QHBoxLayout()
+        row.setContentsMargins(0, 8, 0, 8)   # 行内上下 8px（对齐方案 cfg-row padding 8 0）
+        row.setSpacing(12)
         lbl = QLabel(label)
-        lbl.setStyleSheet(f"font-size: 14px; color: {THEME['text']}; min-width: 70px;")
+        lbl.setStyleSheet(
+            f"font-size: 13px; font-weight: 600; color: {THEME['text']}; min-width: 70px;")
         row.addWidget(lbl)
+        row.addStretch()
 
         time_edit = QLineEdit()
         time_edit.setText(self._config.get(key, "09:00"))
-        time_edit.setFixedWidth(80)
+        time_edit.setFixedSize(88, 34)
         time_edit.setAlignment(Qt.AlignCenter)
-        time_edit.setStyleSheet(f"QLineEdit {{ border: 1.5px solid {THEME['border']}; border-radius: 5px; padding: 4px 8px; background: white; font-size: 13px; min-height: 28px; }} QLineEdit:focus {{ border-color: {THEME['primary']}; }}")
+        time_edit.setStyleSheet(
+            f"QLineEdit {{ border: 1.5px solid {THEME['border']}; border-radius: 8px;"
+            f" padding: 0 8px; background: white; font-size: 13px; }}"
+            f"QLineEdit:focus {{ border-color: {THEME['primary']};"
+            f" background: white; }}")
         time_edit.editingFinished.connect(lambda: self._config.__setitem__(key, time_edit.text()))
         row.addWidget(time_edit)
 
-        hint_lbl = QLabel(hint)
-        hint_lbl.setStyleSheet(f"font-size: 12px; color: {THEME['text_sec']};")
-        row.addWidget(hint_lbl)
-        row.addStretch()
+        if hint:
+            hint_lbl = QLabel(hint)
+            hint_lbl.setStyleSheet(f"font-size: 12px; color: {THEME['text_sec']};")
+            row.addWidget(hint_lbl)
         return row
 
     def _on_save(self):
@@ -1667,26 +2058,20 @@ class ConfigWindow(QWidget):
 #  下班提醒弹窗
 # ─────────────────────────────────────────────
 class OffWorkRemindDialog(QDialog):
-    """下班提醒弹窗：360×240，居中，30秒自动关闭"""
+    """下班提醒弹窗：360 宽高度自适应，居中，30秒自动关闭"""
 
     def __init__(self, remain_txt: str, should_out_str: str, is_arrived: bool = False, parent=None):
         super().__init__(parent)
         self.setWindowTitle("下班提醒")
         self.setObjectName("remindDialog")
-        self.setFixedSize(360, 240)
+        # v110 贴边：360 宽，高度由内容自适应（无固定高度/无留白）
+        self.setFixedWidth(360)
         self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         self._auto_close_remain = 30  # 自动关闭倒计时（秒）
 
-        # 屏幕居中
-        screen = QApplication.primaryScreen().geometry()
-        self.move(
-            (screen.width() - self.width()) // 2,
-            (screen.height() - self.height()) // 2,
-        )
-
         vb = QVBoxLayout(self)
-        vb.setContentsMargins(24, 20, 24, 20)
-        vb.setSpacing(12)
+        vb.setContentsMargins(24, 26, 24, 22)
+        vb.setSpacing(0)
         vb.setAlignment(Qt.AlignCenter)
 
         # 图标
@@ -1694,6 +2079,7 @@ class OffWorkRemindDialog(QDialog):
         lbl_icon.setObjectName("remindIcon")
         lbl_icon.setAlignment(Qt.AlignCenter)
         vb.addWidget(lbl_icon)
+        vb.addSpacing(10)
 
         # 标题：区分"已到下班时间"和"下班提醒"
         lbl_title = QLabel("已到下班时间" if is_arrived else "下班提醒")
@@ -1705,27 +2091,32 @@ class OffWorkRemindDialog(QDialog):
 
         # 还有多久（已到时不显示）
         if not is_arrived:
+            vb.addSpacing(8)
             lbl_remain = QLabel(f"还有 {remain_txt} 就要下班啦！")
             lbl_remain.setObjectName("remindSub")
             lbl_remain.setAlignment(Qt.AlignCenter)
             vb.addWidget(lbl_remain)
 
         # 应下班时间
+        vb.addSpacing(6)
         lbl_out = QLabel(f"预计下班 {should_out_str}")
         lbl_out.setObjectName("remindOut")
         lbl_out.setAlignment(Qt.AlignCenter)
         vb.addWidget(lbl_out)
 
         # 自动关闭倒计时
+        vb.addSpacing(10)
         self._lbl_auto = QLabel(f"{self._auto_close_remain} 秒后自动关闭")
         self._lbl_auto.setObjectName("remindAuto")
         self._lbl_auto.setAlignment(Qt.AlignCenter)
         vb.addWidget(self._lbl_auto)
 
-        # 知道了按钮
+        # 知道了按钮（全宽触底）
+        vb.addSpacing(16)
         btn_ok = QPushButton("知道了")
         btn_ok.setObjectName("btnPrimary")
         btn_ok.setFixedHeight(36)
+        btn_ok.setCursor(Qt.PointingHandCursor)
         btn_ok.clicked.connect(self.close)
         vb.addWidget(btn_ok)
 
@@ -1733,6 +2124,14 @@ class OffWorkRemindDialog(QDialog):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._on_tick)
         self._timer.start(1000)
+
+        # 高度自适应后屏幕居中
+        self.adjustSize()
+        screen = QApplication.primaryScreen().geometry()
+        self.move(
+            (screen.width() - self.width()) // 2,
+            (screen.height() - self.height()) // 2,
+        )
 
     def _on_tick(self):
         self._auto_close_remain -= 1
@@ -1815,12 +2214,11 @@ class MainWindow(QMainWindow):
         content_vb.setContentsMargins(0, 0, 0, 0)
         content_vb.setSpacing(0)
 
-        # 4 页切换
+        # 3 页切换
         self.stack = QStackedWidget()
         self.stack.addWidget(self._build_overview_page())    # 0 今日概览
         self.stack.addWidget(self._build_records_page())     # 1 考勤记录
-        self.stack.addWidget(self._build_overtime_page())    # 2 加班统计
-        self.stack.addWidget(self._build_settings_page())    # 3 系统设置
+        self.stack.addWidget(self._build_settings_page())    # 2 系统设置
         content_vb.addWidget(self.stack)
 
         body_hb.addWidget(content, stretch=1)
@@ -1868,15 +2266,6 @@ class MainWindow(QMainWindow):
 
         tb.addStretch()
 
-        # 预计下班 / 刷新倒计时（由数据标签同步）
-        self._lbl_should_out_top = QLabel("预计下班 --:--")
-        self._lbl_should_out_top.setObjectName("topBarHint")
-        tb.addWidget(self._lbl_should_out_top)
-
-        self._lbl_countdown_top = QLabel("刷新 --:--")
-        self._lbl_countdown_top.setObjectName("topBarHint")
-        tb.addWidget(self._lbl_countdown_top)
-
         # 头像（初始显示工号首字符占位）
         self._lbl_avatar = QLabel()
         self._lbl_avatar.setObjectName("avatar")
@@ -1889,35 +2278,6 @@ class MainWindow(QMainWindow):
         self._lbl_username = QLabel(self.username or "你好")
         self._lbl_username.setObjectName("userName")
         tb.addWidget(self._lbl_username)
-
-        # 设置 / 导出 / 退出登录 图标按钮组
-        btn_group = QFrame()
-        btn_group_lay = QHBoxLayout(btn_group)
-        btn_group_lay.setContentsMargins(0, 0, 0, 0)
-        btn_group_lay.setSpacing(8)
-
-        btn_cfg = QPushButton("\u2699")
-        btn_cfg.setObjectName("iconBtn")
-        btn_cfg.setToolTip("系统设置")
-        btn_cfg.setFixedSize(32, 32)
-        btn_cfg.clicked.connect(lambda: self._switch_page(3))
-        btn_group_lay.addWidget(btn_cfg)
-
-        btn_exp = QPushButton("\u21E9")
-        btn_exp.setObjectName("iconBtn")
-        btn_exp.setToolTip("导出考勤记录 CSV")
-        btn_exp.setFixedSize(32, 32)
-        btn_exp.clicked.connect(self._export_csv)
-        btn_group_lay.addWidget(btn_exp)
-
-        btn_lo = QPushButton("\u23FB")
-        btn_lo.setObjectName("iconBtn")
-        btn_lo.setToolTip("退出登录")
-        btn_lo.setFixedSize(32, 32)
-        btn_lo.clicked.connect(self._logout)
-        btn_group_lay.addWidget(btn_lo)
-
-        tb.addWidget(btn_group)
 
         return top_bar
 
@@ -1952,18 +2312,11 @@ class MainWindow(QMainWindow):
         vb.addLayout(brand)
         vb.addSpacing(12)
 
-        glb = QLabel("主导航")
+        glb = QLabel("视图")
         glb.setObjectName("navGroupLabel")
         vb.addWidget(glb)
 
-        self._nav_btns = []
-        nav_items = [
-            ("\U0001F4CA 今日概览", 0),
-            ("\U0001F4CB 考勤记录", 1),
-            ("\u23F0 加班统计", 2),
-            ("\u2699 系统设置", 3),
-        ]
-        for text, idx in nav_items:
+        def _nav_btn(text, idx):
             btn = QPushButton(text)
             btn.setObjectName("navItem")
             btn.setCheckable(True)
@@ -1971,6 +2324,17 @@ class MainWindow(QMainWindow):
             btn.clicked.connect(lambda _=False, i=idx: self._switch_page(i))
             vb.addWidget(btn)
             self._nav_btns.append(btn)
+            return btn
+
+        self._nav_btns = []
+        _nav_btn("\U0001F4CA 今日概览", 0)
+        _nav_btn("\U0001F4CB 考勤记录", 1)
+
+        glb_sys = QLabel("系统")
+        glb_sys.setObjectName("navGroupLabel")
+        vb.addWidget(glb_sys)
+
+        _nav_btn("\u2699 系统设置", 2)
 
         vb.addStretch()
 
@@ -2066,6 +2430,12 @@ class MainWindow(QMainWindow):
         self.combo_ot_h.currentIndexChanged.connect(self._refresh_detail_panel)
         self.combo_ot_m.currentIndexChanged.connect(self._refresh_detail_panel)
 
+        # 自动刷新倒计时（方案控制行：右侧显示 自动刷新 mm:ss）
+        ctrl_hb.addStretch()
+        self._lbl_auto_refresh = QLabel("自动刷新 --:--")
+        self._lbl_auto_refresh.setObjectName("topBarHint")
+        ctrl_hb.addWidget(self._lbl_auto_refresh)
+
         # 立即刷新
         btn_refresh = QPushButton("\u21BB 刷新")
         btn_refresh.setObjectName("btnPrimary")
@@ -2113,7 +2483,7 @@ class MainWindow(QMainWindow):
         left = QFrame()
         left.setObjectName("card")
         lvb = QVBoxLayout(left)
-        lvb.setContentsMargins(18, 14, 18, 14)
+        lvb.setContentsMargins(16, 16, 16, 16)
         lvb.setSpacing(10)
 
         lbl_sec1 = QLabel("今日考勤详情")
@@ -2197,7 +2567,7 @@ class MainWindow(QMainWindow):
         tl_card = QFrame()
         tl_card.setObjectName("card")
         tvb = QVBoxLayout(tl_card)
-        tvb.setContentsMargins(18, 14, 18, 14)
+        tvb.setContentsMargins(16, 16, 16, 16)
         tvb.setSpacing(10)
         lbl_tl = QLabel("打卡时间线")
         lbl_tl.setObjectName("sectionTitle")
@@ -2225,7 +2595,7 @@ class MainWindow(QMainWindow):
         rmd_card = QFrame()
         rmd_card.setObjectName("card")
         rvb = QVBoxLayout(rmd_card)
-        rvb.setContentsMargins(18, 14, 18, 14)
+        rvb.setContentsMargins(16, 16, 16, 16)
         rvb.setSpacing(10)
         lbl_rmd = QLabel("下班提醒设置")
         lbl_rmd.setObjectName("sectionTitle")
@@ -2294,29 +2664,16 @@ class MainWindow(QMainWindow):
             json.dump(data, f, ensure_ascii=False, indent=2)
 
     def _connect_sync_signals(self):
-        """把核心数据标签的更新同步到时间线 / 顶栏 / 加班小卡"""
+        """把核心数据标签的更新同步到时间线 / 控制行自动刷新"""
         # 打卡记录 → 时间线
         self._detail_lines["clock_records"].textSet.connect(self._update_timeline)
         self._update_timeline(self._detail_lines["clock_records"].text())
-        # 应下班时间 → 顶栏
-        self._detail_lines["should_out"].textSet.connect(self._on_should_out_changed)
-        self._on_should_out_changed(self._detail_lines["should_out"].text())
-        # 刷新倒计时 → 顶栏
+        # 刷新倒计时 → 控制行"自动刷新 mm:ss"
         self._lbl_countdown.textSet.connect(self._on_countdown_changed)
         self._on_countdown_changed(self._lbl_countdown.text())
-        # 加班 4 项 → 加班统计小卡
-        ot_map = {"ot_weekday": "weekday", "ot_weekend": "weekend",
-                  "ot_holiday": "holiday", "ot_cycle_sum": "cycle_sum"}
-        for src_key, card_key in ot_map.items():
-            if src_key in self._detail_lines and card_key in self._ot_cards:
-                self._detail_lines[src_key].textSet.connect(self._ot_cards[card_key].setText)
-                self._ot_cards[card_key].setText(self._detail_lines[src_key].text())
-
-    def _on_should_out_changed(self, text):
-        self._lbl_should_out_top.setText(f"预计下班 {text}")
 
     def _on_countdown_changed(self, text):
-        self._lbl_countdown_top.setText(f"刷新 {text}")
+        self._lbl_auto_refresh.setText(f"自动刷新 {text}")
 
     def _update_timeline(self, text):
         """根据打卡记录文本更新时间线"""
@@ -2368,134 +2725,15 @@ class MainWindow(QMainWindow):
         self.table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
         vb.addWidget(self.table, stretch=1)
 
-        # 底部计数（setText 触发加班表同步）
-        self.lbl_count = _SignalLabel("共 0 条记录")
+        # 底部计数
+        self.lbl_count = QLabel("共 0 条记录")
         self.lbl_count.setObjectName("caption")
-        self.lbl_count.textSet.connect(self._sync_overtime_table)
         vb.addWidget(self.lbl_count, 0, Qt.AlignRight)
 
         return page
 
     # ═══════════════════════════════════════
-    #  第 2 页：加班统计
-    # ═══════════════════════════════════════
-    def _build_overtime_page(self):
-        page = QWidget()
-        page.setObjectName("pageRoot")
-        vb = QVBoxLayout(page)
-        vb.setContentsMargins(16, 16, 16, 16)
-        vb.setSpacing(14)
-
-        lbl_title = QLabel("加班统计")
-        lbl_title.setObjectName("pageTitle")
-        vb.addWidget(lbl_title)
-
-        # 4 张小卡
-        cards = QHBoxLayout()
-        cards.setSpacing(12)
-        self._ot_cards = {}
-        for key, label, obj in [
-            ("weekday", "平加", "metricValuePrimary"),
-            ("weekend", "周加", "metricValueWarning"),
-            ("holiday", "假加", "metricValueSuccess"),
-            ("cycle_sum", "合计", "metricValue"),
-        ]:
-            c = QFrame()
-            c.setObjectName("otCard")
-            cvb = QVBoxLayout(c)
-            cvb.setContentsMargins(14, 10, 14, 10)
-            cvb.setSpacing(4)
-            lt = QLabel(label)
-            lt.setObjectName("metricTitle")
-            lv = QLabel("--")
-            lv.setObjectName(obj)
-            cvb.addWidget(lt)
-            cvb.addWidget(lv)
-            cards.addWidget(c, stretch=1)
-            self._ot_cards[key] = lv
-        vb.addLayout(cards)
-
-        lbl_sec = QLabel("加班明细")
-        lbl_sec.setObjectName("sectionTitle")
-        vb.addWidget(lbl_sec)
-
-        # 加班明细表格（由 _sync_overtime_table 从 self.table 同步填充）
-        self.overtime_table = QTableWidget()
-        self.overtime_table.setObjectName("overtimeTable")
-        self.overtime_table.setAlternatingRowColors(True)
-        self.overtime_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.overtime_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.overtime_table.horizontalHeader().setStretchLastSection(True)
-        self.overtime_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
-        self.overtime_table.verticalHeader().setDefaultSectionSize(28)
-        self.overtime_table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
-        vb.addWidget(self.overtime_table, stretch=1)
-
-        return page
-
-    def _sync_overtime_table(self, *args):
-        """从 self.table 同步加班明细（过滤加班>0 的行，跳过汇总行）"""
-        try:
-            headers = getattr(self, "_headers", []) or []
-            rows = getattr(self, "_all_data", []) or []
-            if not headers:
-                self.overtime_table.clear()
-                self.overtime_table.setRowCount(0)
-                return
-
-            def col_idx(kws):
-                for i, h in enumerate(headers):
-                    if any(k in h for k in kws):
-                        return i
-                return -1
-
-            date_i = col_idx(["考勤日期", "日期"])
-            wd_i = col_idx(["平加"])
-            we_i = col_idx(["周加"])
-            hd_i = col_idx(["假加"])
-            tot_i = col_idx(["合计加班", "合计"])
-
-            def cell(row, i):
-                return str(row[i]).strip() if 0 <= i < len(row) else ""
-
-            def to_h(v):
-                try:
-                    if not v or v in ("0", "--", ""):
-                        return 0.0
-                    if ":" in v:
-                        h, m = v.split(":")
-                        return float(h) + float(m) / 60.0
-                    return float(v)
-                except Exception:
-                    return 0.0
-
-            keep = []
-            for row in rows:
-                if not row:
-                    continue
-                date_val = cell(row, date_i)
-                if "至" in date_val:  # 跳过汇总行
-                    continue
-                vals = [cell(row, i) for i in (wd_i, we_i, hd_i, tot_i)]
-                if any(to_h(v) > 0 for v in vals):
-                    keep.append([date_val] + vals)
-
-            self.overtime_table.clear()
-            self.overtime_table.setColumnCount(5)
-            self.overtime_table.setHorizontalHeaderLabels(
-                ["日期", "平加(h)", "周加(h)", "假加(h)", "合计(h)"])
-            self.overtime_table.setRowCount(len(keep))
-            for r, row in enumerate(keep):
-                for c, v in enumerate(row):
-                    it = QTableWidgetItem(v)
-                    it.setTextAlignment(Qt.AlignCenter)
-                    self.overtime_table.setItem(r, c, it)
-            self.overtime_table.resizeColumnsToContents()
-        except Exception:
-            pass
-
-    # ═══════════════════════════════════════
-    #  第 3 页：系统设置（上下班 6 项时间表单）
+    #  第 2 页：系统设置（上下班 6 项时间表单）
     # ═══════════════════════════════════════
     def _build_settings_page(self):
         page = QWidget()
@@ -2664,7 +2902,7 @@ class MainWindow(QMainWindow):
         card = QFrame()
         card.setObjectName("metricCardAccent" if accent else "metricCard")
         vbl = QVBoxLayout(card)
-        vbl.setContentsMargins(16, 12, 16, 12)
+        vbl.setContentsMargins(16, 16, 16, 16)
         vbl.setSpacing(4)
         lbl_t = QLabel(title)
         lbl_t.setObjectName("metricTitle")
@@ -3852,23 +4090,6 @@ def main():
 
     sys.excepthook = _write_crash
 
-    # ─────────────────────────────────────────────
-    #  单实例检查
-    # ─────────────────────────────────────────────
-    app_id = "AttendanceTool_SingleInstance"
-    server = None
-    socket = QLocalSocket()
-    socket.connectToServer(app_id)
-    if socket.waitForConnected(500):
-        # 已有实例在运行，发送激活信号后退出
-        socket.close()
-        print("程序已在运行中，正在激活...")
-        sys.exit(0)
-    else:
-        # 没有实例在运行，创建服务器
-        server = QLocalServer()
-        server.listen(app_id)
-
     try:
         app = QApplication(sys.argv)
         app.setApplicationName("考勤管理系统")
@@ -3877,6 +4098,59 @@ def main():
         app.setFont(QFont("Microsoft YaHei", 10))
         # 防止关闭所有窗口时自动退出（程序生命周期由托盘图标控制）
         app.setQuitOnLastWindowClosed(False)
+
+        # ─────────────────────────────────────────────
+        #  单实例检查（必须在 QApplication 创建之后：
+        #  QLocalServer 依赖事件循环，提前 listen 会导致
+        #  newConnection 信号无法派发、也无法响应 pong）
+        # ─────────────────────────────────────────────
+        app_id = "AttendanceTool_SingleInstance"
+        server = None
+        socket = QLocalSocket()
+        socket.connectToServer(app_id)
+        if socket.waitForConnected(500):
+            # 连接成功：发 ping 验证是否为活实例
+            # （进程被强杀后 Windows 会残留僵尸命名管道，连上但无响应）
+            socket.write(b"ping")
+            socket.flush()
+            is_alive = False
+            if socket.waitForReadyRead(1000):
+                if bytes(socket.readAll().data()) == b"pong":
+                    is_alive = True
+            socket.close()
+            if is_alive:
+                # 真实例在运行，发送激活信号后退出
+                print("程序已在运行中，正在激活...")
+                sys.exit(0)
+            # 僵尸管道：移除残留命名管道后继续启动
+            QLocalServer.removeServer(app_id)
+            print("[单实例] 检测到僵尸命名管道，已移除")
+
+        # 没有活实例在运行，创建服务器
+        server = QLocalServer()
+        server.listen(app_id)
+
+        def _on_single_conn():
+            """活实例被连接时响应 pong，实现活体验证"""
+            try:
+                conn = server.nextPendingConnection()
+                if conn is None:
+                    return
+                conn.readyRead.connect(lambda: _reply_pong(conn))
+            except Exception:
+                pass
+
+        def _reply_pong(conn):
+            try:
+                if bytes(conn.readAll().data()) == b"ping":
+                    conn.write(b"pong")
+                    conn.flush()
+            except Exception:
+                pass
+            finally:
+                conn.disconnectFromServer()
+
+        server.newConnection.connect(_on_single_conn)
 
         login_win = LoginWindow()
         main_win_holder = [None]

@@ -2,22 +2,23 @@
 import os
 import sys
 
-# Playwright headless shell 路径（打包时使用 ms-playwright 中的真实路径）
-HEADLESS_SRC = os.path.join(
+# Playwright 完整 Chromium 路径（打包时使用 ms-playwright 中的真实路径）
+# Playwright 1.58 对应 chromium-1208。运行时用 executable_path 直接指向 chrome.exe，
+# 不依赖 headless-shell（headless-shell 在部分环境会 launch 卡死，已弃用）。
+CHROME_SRC = os.path.join(
     os.environ.get('LOCALAPPDATA', ''),
-    'ms-playwright', 'chromium_headless_shell-1208', 'chrome-headless-shell-win64'
+    'ms-playwright', 'chromium-1208'
 )
 
-# 打包目标路径：必须与 Playwright 期望的路径一致
-# Playwright 在 _MEIPASS 下查找: playwright/driver/package/.local-browsers/chromium_headless_shell-1208/chrome-headless-shell-win64
-HEADLESS_DST = 'playwright/driver/package/.local-browsers/chromium_headless_shell-1208/chrome-headless-shell-win64'
+# 打包目标路径：运行时代码用 executable_path 指向该目录下的 chrome.exe
+CHROME_DST = 'playwright/driver/package/.local-browsers/chromium-1208'
 
 datas = []
-if os.path.exists(HEADLESS_SRC):
-    print(f"[spec] 找到 headless shell: {HEADLESS_SRC}")
-    datas.append((HEADLESS_SRC, HEADLESS_DST))
+if os.path.exists(CHROME_SRC):
+    print(f"[spec] 找到完整 Chromium: {CHROME_SRC}")
+    datas.append((CHROME_SRC, CHROME_DST))
 else:
-    print(f"[spec] 警告：未找到 headless shell: {HEADLESS_SRC}")
+    print(f"[spec] 警告：未找到完整 Chromium: {CHROME_SRC}")
 
 a = Analysis(
     ['attendance_tool.py'],
@@ -44,7 +45,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
