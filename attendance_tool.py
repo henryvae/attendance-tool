@@ -1220,9 +1220,12 @@ QSpinBox::up-button, QSpinBox::down-button {
 QSpinBox::up-button { subcontrol-position: top right; border-top-right-radius: 8px; }
 QSpinBox::down-button { subcontrol-position: bottom right; border-bottom-right-radius: 8px; }
 QSpinBox::up-arrow, QSpinBox::down-arrow {
-    image: none;
-    width: 0px;
-    height: 0px;
+    width: 10px;
+    height: 6px;
+}
+QSpinBox:hover::up-arrow, QSpinBox:focus::up-arrow,
+QSpinBox:hover::down-arrow, QSpinBox:focus::down-arrow {
+    /* 使用 Qt 默认箭头，不加载自定义 PNG，避免箭头错位到数字区域 */
 }
 
 /* ── 按钮 ── */
