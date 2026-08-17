@@ -129,6 +129,17 @@ body {
   background: radial-gradient(circle, rgba(79,107,246,.13), transparent 65%);
   top:-70px; right:0; pointer-events:none;
 }
+.login-card .login-bar {                 /* 无边框窗口自定义标题栏（56px）*/
+  display:flex; align-items:center; height:56px; flex:0 0 56px;
+  padding: 0 12px 0 14px; gap:6px;
+}
+.login-card .login-bar .lb-title { font-size:12px; color:var(--ink-500); flex:1; }
+.login-card .login-bar .lb-btn {
+  width:50px; height:50px; border:none; background:transparent; border-radius:8px;
+  color:var(--ink-500); font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+}
+.login-card .login-bar .lb-btn:hover { background:rgba(0,0,0,.05); }
+.login-card .login-bar .lb-btn.close:hover { background:rgba(239,68,68,.12); color:#EF4444; }
 .login-card .size-tag {                 /* 尺寸标注 */
   position:absolute; top:12px; right:12px; z-index:3;
   font-family:var(--mono); font-size:10px; color:var(--ink-400);
@@ -281,6 +292,8 @@ body {
 .badge.red { background:var(--danger-bg); color:var(--danger); }
 .badge.blue { background:var(--info-bg); color:var(--info); }
 .badge.gray { background:var(--bg); color:var(--ink-500); }
+.badge.week { background:var(--primary-100); color:var(--primary); }
+.badge.week-rest { background:#F3F4F6; color:var(--ink-500); }
 
 /* 控件组 */
 .ctrl-row { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
@@ -404,7 +417,13 @@ tbody tr:last-child td { border-bottom:none; }
     </div>
     <div class="login-stage">
       <div class="login-card">
-        <span class="size-tag">360 × 437 · 窗口即卡片</span>
+        <span class="size-tag">360 × 530 · 无边框窗口</span>
+        <!-- 自定义标题栏：左标题 + 右侧 最小化 / 关闭（各 50×50） -->
+        <div class="login-bar">
+          <span class="lb-title">考勤管理系统 · 登录</span>
+          <button class="lb-btn" title="最小化">−</button>
+          <button class="lb-btn close" title="退出">×</button>
+        </div>
         <div class="l-logo">
           <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="4" width="18" height="18" rx="3"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
@@ -457,7 +476,7 @@ tbody tr:last-child td { border-bottom:none; }
           </svg>
         </div>
         <span class="a-name">考勤管理</span>
-        <span class="a-ver">v104</span>
+        <span class="a-ver">v2026.08</span>
         <div class="spacer"></div>
         <div class="a-user"><div class="avatar">A</div> 张伟</div>
       </div>
@@ -500,7 +519,7 @@ tbody tr:last-child td { border-bottom:none; }
               <option>2026/08/13 周四</option>
               <option>2026/08/12 周三</option>
             </select>
-            <span class="label" style="margin-left:6px">加班设置</span>
+            <span class="label" style="margin-left:6px">加班</span>
             <select class="select" style="width:64px"><option>2</option></select>
             <span class="label">时</span>
             <select class="select" style="width:70px"><option>15</option></select>
@@ -511,10 +530,13 @@ tbody tr:last-child td { border-bottom:none; }
             <button class="btn btn-ghost btn-sm">⟳ 刷新</button>
           </div>
 
+          <!-- 状态行 -->
+          <div style="display:flex;align-items:center;padding:2px 10px 0;font-size:12px;color:var(--ink-500)">就绪</div>
+
           <!-- 指标卡 -->
           <div class="stat-grid">
             <div class="card stat-card accent">
-              <div class="s-label">今日应下班</div>
+              <div class="s-label">应下班时间</div>
               <div class="s-value">18:07</div>
               <div class="s-hint">预计下班时间</div>
             </div>
@@ -529,52 +551,42 @@ tbody tr:last-child td { border-bottom:none; }
               <div class="s-hint"><span class="badge orange">加班中</span></div>
             </div>
             <div class="card stat-card">
-              <div class="s-label">本月累计加班</div>
+              <div class="s-label">合计加班</div>
               <div class="s-value">28<small>时</small> 30<small>分</small></div>
               <div class="s-hint"><span class="badge blue">平 20h</span> <span class="badge green">周 8h</span> <span class="badge gray">假 0.5h</span></div>
             </div>
           </div>
 
-          <!-- 双栏：今日详情 + 打卡 -->
-          <div class="main-cols">
-            <!-- 左：今日考勤详情 -->
-            <div class="card card-pad">
-              <div class="card-head">
+          <!-- 今日考勤详情（占满整行，原右侧"打卡时间线"卡片已移除） -->
+          <div class="card card-pad">
+            <div class="card-head">
+              <div style="display:flex;align-items:center;gap:10px">
                 <h3>今日考勤详情</h3>
-                <div>
-                  <span class="badge red" style="margin-right:6px">迟到 ×2</span>
-                  <span class="badge orange">早退 ×1</span>
-                </div>
+                <span class="badge week">本周 · 小周（上班）</span>
               </div>
-              <div class="detail-rows">
-                <div class="d-row"><span class="k">打卡记录</span><span class="v" style="color:var(--ink-700);font-weight:600">07:46 · 17:15 · 17:56 · 20:01</span></div>
-                <div class="d-row"><span class="k">应下班时间</span><span class="v hl">18:07</span></div>
-                <div class="d-row"><span class="k">已工作时长</span><span class="v green">08时48分</span></div>
-                <div class="d-row"><span class="k">已加班时长</span><span class="v orange">02时15分</span></div>
-                <div class="d-row"><span class="k">平加 (工作日)</span><span class="v">20.0 h</span></div>
-                <div class="d-row"><span class="k">周加 (周末)</span><span class="v">8.0 h</span></div>
-                <div class="d-row"><span class="k">假加 (节假日)</span><span class="v">0.5 h</span></div>
-                <div class="d-row"><span class="k">合计加班</span><span class="v hl">28.5 h</span></div>
+              <div>
+                <span class="badge red" style="margin-right:6px">迟到 ×2</span>
+                <span class="badge orange">早退 ×1</span>
               </div>
             </div>
-
-            <!-- 右：打卡时间线 + 提醒设置 -->
-            <div class="card card-pad">
-              <div class="card-head"><h3>打卡时间线</h3><span class="badge gray">4 次打卡</span></div>
-              <div class="timeline">
-                <div class="tl-item"><span class="t-dot in"></span><span class="t-time">07:46</span><span class="t-label">上班打卡</span></div>
-                <div class="tl-item"><span class="t-dot in"></span><span class="t-time">17:15</span><span class="t-label">晚休开始</span></div>
-                <div class="tl-item"><span class="t-dot out"></span><span class="t-time">17:56</span><span class="t-label">晚休结束 · 加班</span></div>
-                <div class="tl-item"><span class="t-dot out"></span><span class="t-time">20:01</span><span class="t-label">下班打卡</span></div>
-              </div>
-              <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
-                <div class="ctrl-row" style="margin:0">
-                  <span class="label">🔔 下班提醒</span>
-                  <input type="checkbox" checked style="accent-color:var(--primary)">
-                  <select class="select" style="width:64px"><option>5</option></select>
-                  <span class="label" style="color:var(--ink-400)">分钟前</span>
-                  <button class="icon-btn" title="测试提醒" style="margin-left:auto">▶</button>
-                </div>
+            <div class="detail-rows">
+              <div class="d-row"><span class="k">打卡记录</span><span class="v" style="color:var(--ink-700);font-weight:600">07:46 · 17:15 · 17:56 · 20:01</span></div>
+              <div class="d-row"><span class="k">应下班时间</span><span class="v hl">18:07</span></div>
+              <div class="d-row"><span class="k">已工作时长</span><span class="v green">08时48分</span></div>
+              <div class="d-row"><span class="k">已加班时长</span><span class="v orange">02时15分</span></div>
+              <div class="d-row"><span class="k">平加 (工作日)</span><span class="v">20.0 h</span></div>
+              <div class="d-row"><span class="k">周加 (周末)</span><span class="v">8.0 h</span></div>
+              <div class="d-row"><span class="k">假加 (节假日)</span><span class="v">0.5 h</span></div>
+              <div class="d-row"><span class="k">合计加班</span><span class="v hl">28.5 h</span></div>
+            </div>
+            <!-- 分隔线 + 下班提醒（已移至详情卡片底部） -->
+            <div style="border-top:1px solid var(--border);margin:14px 0 0;padding-top:14px">
+              <div class="ctrl-row" style="margin:0">
+                <span class="label">🔔 下班提醒</span>
+                <input type="checkbox" checked style="accent-color:var(--primary)">
+                <select class="select" style="width:64px"><option>0</option><option>5</option><option>10</option><option>15</option><option>20</option><option>30</option><option>45</option><option>60</option></select>
+                <span class="label" style="color:var(--ink-400)">分钟前</span>
+                <button class="icon-btn" title="测试提醒" style="margin-left:auto">▶</button>
               </div>
             </div>
           </div>
@@ -684,8 +696,9 @@ tbody tr:last-child td { border-bottom:none; }
   </div>
 
   <div class="footer">
-    UI Designer 设计稿 · 考勤管理工具 v109 窗口紧贴方案<br>
-    保留全部现有功能：登录 / 本月上月切换 / 日期选择 / 加班设置 / 下班提醒 / 迟到早退统计 / 刷新倒计时 / 导出 CSV / 上下班配置 / 大小周逻辑<br>
+    UI Designer 设计稿 · 考勤管理工具（按现状同步）<br>
+    主界面布局变更：移除"打卡时间线"卡片，"今日考勤详情"占满整行；卡片标题区新增大小周提示徽章（奇数周→小周·上班 / 偶数周→大周·休息）；"下班提醒"移入详情卡片底部<br>
+    登录窗口为无边框自定义标题栏（标题 + 50×50 最小化 / 关闭）；保留全部现有功能：本月上月切换 / 日期选择 / 加班设置 / 下班提醒 / 迟到早退统计 / 自动刷新倒计时 / 导出 CSV / 上下班配置 / 大小周逻辑<br>
     <span style="color:var(--ink-400);font-size:11px">统一语言：窗口即卡片 · 直角紧凑 · 无多余留边（预览投影仅用于浮起展示，运行时为系统直角窗框）</span>
   </div>
 
