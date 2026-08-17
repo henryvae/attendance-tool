@@ -1707,9 +1707,9 @@ class LoginWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("考勤管理系统 · 登录")
-        # 窗口即卡片：360×460 紧贴窗口、圆角 14px、四周零留边
+        # 窗口即卡片：360×530 紧贴窗口、圆角 14px、四周零留边
         self.setFixedWidth(360)
-        self.setFixedHeight(460)
+        self.setFixedHeight(530)
         # 登录窗：无边框 + 自定义标题栏（彻底去掉 Windows 11 的系统最大化/Snap 按钮）
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -2024,7 +2024,7 @@ class LoginWindow(QWidget):
             " margin-top: 6px;")
         cl.addWidget(self.lbl_err)
 
-        root_lay.addWidget(self._card)  # 卡片铺满窗口（360×460 窗即卡片）
+        root_lay.addWidget(self._card)  # 卡片铺满窗口（360×530 窗即卡片）
 
         # 回车快捷登录
         self.input_user.returnPressed.connect(self._do_login)
