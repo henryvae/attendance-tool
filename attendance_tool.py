@@ -1994,10 +1994,11 @@ class LoginWindow(QWidget):
         cl.addWidget(self.btn_login)
 
         # ── 底部流动进度条（登录中显示，自定义 QLabel 动画更可靠） ──
-        self._progress_track = QWidget()
+        self._progress_track = QFrame()
+        self._progress_track.setFrameShape(QFrame.NoFrame)
         self._progress_track.setFixedHeight(4)
         self._progress_track.setStyleSheet(
-            "background:#EDF0FE;border-radius:2px;margin-top:8px;")
+            "QFrame { background:#EDF0FE;border-radius:2px;margin-top:8px; }")
         self._progress_thumb = QLabel(self._progress_track)
         self._progress_thumb.setFixedSize(60, 4)
         self._progress_thumb.setStyleSheet(
