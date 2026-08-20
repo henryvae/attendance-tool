@@ -1994,22 +1994,17 @@ class LoginWindow(QWidget):
         cl.addWidget(self.btn_login)
 
         # ── 底部流动进度条（登录中显示，自定义 QLabel 动画） ──
-        self._progress_track = QFrame()
-        self._progress_track.setFrameShape(QFrame.NoFrame)
-        self._progress_track.setFixedHeight(6)
-        self._progress_track.setAutoFillBackground(True)
-        pal_track = self._progress_track.palette()
-        pal_track.setColor(self._progress_track.backgroundRole(), QColor("#E0E7FF"))
-        self._progress_track.setPalette(pal_track)
+        # 注意：在此卡片内 QFrame + palette 无法绘制背景；QLabel 的 QSS margin-top 也会导致背景不绘制，
+        #       因此用 cl.addSpacing 控制间距，样式里只保留 background-color + border-radius。
+        cl.addSpacing(8)
+        self._progress_track = QLabel()
+        self._progress_track.setFixedHeight(8)
         self._progress_track.setStyleSheet(
-            "QFrame { border-radius:3px; margin-top:8px; }")
+            "QLabel { background-color:#E0E7FF; border-radius:4px; }")
         self._progress_thumb = QLabel(self._progress_track)
-        self._progress_thumb.setFixedSize(60, 6)
-        self._progress_thumb.setAutoFillBackground(True)
-        pal_thumb = self._progress_thumb.palette()
-        pal_thumb.setColor(self._progress_thumb.backgroundRole(), QColor("#4F6BF6"))
-        self._progress_thumb.setPalette(pal_thumb)
-        self._progress_thumb.setStyleSheet("border-radius:3px;")
+        self._progress_thumb.setFixedSize(80, 8)
+        self._progress_thumb.setStyleSheet(
+            "QLabel { background-color:#4F6BF6; border-radius:4px; }")
         self._progress_thumb.move(0, 0)
         self._progress_track.setVisible(False)
         cl.addWidget(self._progress_track)
@@ -2017,8 +2012,8 @@ class LoginWindow(QWidget):
         self._progress_anim = QPropertyAnimation(self._progress_thumb, b"geometry")
         self._progress_anim.setDuration(1200)
         self._progress_anim.setLoopCount(-1)
-        self._progress_anim.setStartValue(QRect(0, 0, 60, 6))
-        self._progress_anim.setEndValue(QRect(240, 0, 60, 6))
+        self._progress_anim.setStartValue(QRect(0, 0, 80, 8))
+        self._progress_anim.setEndValue(QRect(224, 0, 80, 8))
         self._progress_anim.setEasingCurve(QEasingCurve.Linear)
 
         # ── 状态提示区（方案：红色圆角卡片错误提示） ──
